@@ -138,8 +138,8 @@ V20 停用内核的 `autocreate-playlist`，统一由前端把同目录视频追
 
 ## 从源码构建
 
-运行 `scripts/bootstrap.ps1` 自动准备官方 .NET 10 SDK 和 mpv.net v7.1.2.0 的官方 x64 播放组件到 `.tools`，再运行 `scripts/build-portable.ps1` 生成 `dist/mpvnet-modern`，运行 `scripts/package.py` 生成带公开版本号的便携包、对应源码包和校验文件。构建脚本不会注册应用或安装文件关联。
+运行 `scripts/bootstrap.ps1` 自动准备官方 .NET 10 SDK 和 mpv.net v7.1.2.0 的官方 x64 播放组件到 `.tools`，再运行 `scripts/build-portable.ps1` 生成 `dist/FrameFlow`，运行 `scripts/package.py` 生成带公开版本号的便携包、对应源码包和校验文件。构建脚本不会注册应用或安装文件关联。
 
 公开版本在 `MpvNet.Windows.csproj` 的 `ModernVersion` 中统一管理，界面、EXE 元数据和压缩包名共用此值。发布下一版前运行 `python scripts/version.py --next`，会自动跳过所有含数字 4 的版本，例如 V3 → V5、V13 → V15、V39 → V50；普通编译与重新打包不会增加版本。运行 `python scripts/version.py` 查看当前版本。
 
-源码基于 https://github.com/mpvnet-player/mpv.net ，修改部分在 `MainForm.Modern*.cs` 和 `Modern` 目录。继承 GPL v2 许可，随二进制分发时应同时提供本项目对应源码和许可。其他依赖沿用各自许可；发布目录附第三方说明。
+源码基于 https://github.com/mpvnet-player/mpv.net ，修改部分在 `MainForm.Modern*.cs` 和 `Modern` 目录。原项目 GPL v2 许可文件与版权声明保留，各依赖分别适用各自许可。对外分发前须核对版本兼容性，并按实际依赖提供所要求的对应源码与构建资料，详见《开源声明.md》和《第三方组件.md》。
