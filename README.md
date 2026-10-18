@@ -6,7 +6,7 @@ FrameFlow 是基于 mpv.net 修改的 **Windows x64 桌面视频播放器**，�
 
 当前版本 **V27**，文件版本 `7.1.2.1027`。界面使用 `#0096FF` 蓝色标题栏、深色控制条和蓝色播放图标。
 
-**源码仓库：[lingqifeng0/FrameFlow](https://github.com/lingqifeng0/FrameFlow)**。当前为私有源码仓库，尚未上传 GitHub Release 附件；下文的便携包名称指本地构建产物。原项目来源、许可证及对外分发前待核对的事项见[开源声明](docs/open-source-notices.md)。
+**公开源码仓库：[lingqifeng0/FrameFlow](https://github.com/lingqifeng0/FrameFlow)**。无需登录即可查看源码、功能介绍和界面截图。目前尚未上传 GitHub Release 附件；下文的便携包名称指本地构建产物。原项目来源、许可证及完整软件包对外分发前待核对的事项见[开源声明](docs/open-source-notices.md)。
 
 ## 功能概览
 
