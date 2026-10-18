@@ -1,4 +1,4 @@
-﻿
+
 using Microsoft.Win32;
 
 using MpvNet.Windows.Help;
@@ -24,13 +24,14 @@ public static class FileAssociation
             }
 
             RegistryHelp.SetValue(@"HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\" + exeFilename, "", exePath);
-            RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename, "FriendlyAppName", "mpv.net media player");
+            RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename, "FriendlyAppName", "FrameFlow 视频播放器");
+            RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename + @"\DefaultIcon", "", $"\"{exePath}\",0");
             RegistryHelp.SetValue(@"HKCR\Applications\" + exeFilename + @"\shell\open\command", "", $"\"{exePath}\" \"%1\"");
             RegistryHelp.SetValue(@"HKCR\SystemFileAssociations\video\OpenWithList\" + exeFilename, "", "");
             RegistryHelp.SetValue(@"HKCR\SystemFileAssociations\audio\OpenWithList\" + exeFilename, "", "");
-            RegistryHelp.SetValue(@"HKLM\SOFTWARE\RegisteredApplications", "mpv.net", @"SOFTWARE\Clients\Media\mpv.net\Capabilities");
-            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\mpv.net\Capabilities", "ApplicationDescription", "mpv.net media player");
-            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\mpv.net\Capabilities", "ApplicationName", "mpv.net");
+            RegistryHelp.SetValue(@"HKLM\SOFTWARE\RegisteredApplications", "FrameFlow", @"SOFTWARE\Clients\Media\FrameFlow\Capabilities");
+            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\FrameFlow\Capabilities", "ApplicationDescription", "FrameFlow 视频播放器");
+            RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\FrameFlow\Capabilities", "ApplicationName", "FrameFlow");
 
             foreach (string ext in extensions)
             {
@@ -39,7 +40,8 @@ public static class FileAssociation
                 RegistryHelp.SetValue(@"HKCR\" + "." + ext + @"\OpenWithProgIDs", exeFilenameNoExt + "." + ext, "");
                 RegistryHelp.SetValue(@"HKCR\" + "." + ext, "PerceivedType", perceivedType);
                 RegistryHelp.SetValue(@"HKCR\" + exeFilenameNoExt + "." + ext + @"\shell\open\command", "", $"\"{exePath}\" \"%1\"");
-                RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\mpv.net\Capabilities\FileAssociations", "." + ext, exeFilenameNoExt + "." + ext);
+                RegistryHelp.SetValue(@"HKCR\" + exeFilenameNoExt + "." + ext + @"\DefaultIcon", "", $"\"{exePath}\",0");
+                RegistryHelp.SetValue(@"HKLM\SOFTWARE\Clients\Media\FrameFlow\Capabilities\FileAssociations", "." + ext, exeFilenameNoExt + "." + ext);
             }
         }
         else
@@ -49,11 +51,11 @@ public static class FileAssociation
 
             RegistryHelp.RemoveKey(@"HKCU\Software\Microsoft\Windows\CurrentVersion\App Paths\" + exeFilename);
             RegistryHelp.RemoveKey(@"HKCR\Applications\" + exeFilename);
-            RegistryHelp.RemoveKey(@"HKLM\SOFTWARE\Clients\Media\mpv.net");
+            RegistryHelp.RemoveKey(@"HKLM\SOFTWARE\Clients\Media\FrameFlow");
             RegistryHelp.RemoveKey(@"HKCR\SystemFileAssociations\video\OpenWithList\" + exeFilename);
             RegistryHelp.RemoveKey(@"HKCR\SystemFileAssociations\audio\OpenWithList\" + exeFilename);
 
-            RegistryHelp.RemoveValue(@"HKLM\SOFTWARE\RegisteredApplications", "mpv.net");
+            RegistryHelp.RemoveValue(@"HKLM\SOFTWARE\RegisteredApplications", "FrameFlow");
 
             foreach (string id in Registry.ClassesRoot.GetSubKeyNames())
             {

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows7.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/MpvNet.Windows/Modern/ModernControls.cs" Link="ModernControls.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/VideoSurface.cs" Link="VideoSurface.cs" />
+  </ItemGroup>
+</Project>

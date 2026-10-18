@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/MpvNet.Windows/Modern/ModernSettings.cs" Link="ModernSettings.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/SharedSettingsFile.cs" Link="SharedSettingsFile.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/SharedPlaybackProgress.cs" Link="SharedPlaybackProgress.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/DoubleClickActions.cs" Link="DoubleClickActions.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/WheelActions.cs" Link="WheelActions.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/MouseDragActions.cs" Link="MouseDragActions.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/ToolbarCatalog.cs" Link="ToolbarCatalog.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/ShortcutCatalog.cs" Link="ShortcutCatalog.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/ResumePositionPolicy.cs" Link="ResumePositionPolicy.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/WindowResizeBounds.cs" Link="WindowResizeBounds.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/ToolbarLayout.cs" Link="ToolbarLayout.cs" />
+  </ItemGroup>
+</Project>

@@ -81,7 +81,7 @@ public class InputConf
                 Terminal.WriteError("Failed to update menu." + BR + ex.Message);
             }
 
-            return Content;
+            return InputHelp.RemoveEscapeQuitBinding(InputHelp.RerouteScreenshotBindings(Content));
         }
         else
         {
@@ -108,7 +108,7 @@ public class InputConf
             }
 
             defaults.AddRange(conf);
-            return InputHelp.ConvertToString(defaults);
+            return InputHelp.RemoveEscapeQuitBinding(InputHelp.ConvertToString(defaults));
         }
     }
 

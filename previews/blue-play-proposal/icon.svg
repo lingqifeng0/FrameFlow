@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <title>蓝色播放图标预览方案</title>
+  <circle cx="128" cy="128" r="116" fill="#0096FF"/>
+  <path d="M 104 77 L 179 121 Q 190 128 179 135 L 104 179 Q 96 184 96 174 L 96 82 Q 96 72 104 77 Z" fill="#FFFFFF"/>
+</svg>

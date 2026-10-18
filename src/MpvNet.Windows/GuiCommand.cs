@@ -1,4 +1,4 @@
-﻿
+
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -32,6 +32,8 @@ public class GuiCommand
     {
         ["add-to-path"] = args => AddToPath(),
         ["edit-conf-file"] = EditCongFile,
+        ["frameflow-manual"] = args => ProcessHelp.ShellExecute(Path.Combine(Folder.Startup, "使用说明.md")),
+        ["frameflow-notices"] = args => ProcessHelp.ShellExecute(Path.Combine(Folder.Startup, "开源声明.md")),
         ["load-audio"] = LoadAudio,
         ["load-sub"] = LoadSubtitle,
         ["move-window"] = args => MoveWindow?.Invoke(args[0]),
@@ -44,11 +46,11 @@ public class GuiCommand
         ["show-about"] = args => ShowDialog(typeof(AboutWindow)),
         ["show-bindings"] = args => ShowBindings(),
         ["show-commands"] = args => ShowCommands(),
-        ["show-conf-editor"] = args => ShowDialog(typeof(ConfWindow)),
+        ["show-conf-editor"] = ShowConfEditor,
         ["show-decoders"] = args => ShowDecoders(),
         ["show-demuxers"] = args => ShowDemuxers(),
         ["show-info"] = args => ShowMediaInfo(new[] { "osd" }),
-        ["show-input-editor"] = args => ShowDialog(typeof(InputWindow)),
+        ["show-input-editor"] = args => ShowConfEditor(new[] { "快捷键与鼠标:" }),
         ["show-keys"] = args => ShowKeys(),
         ["show-media-info"] = ShowMediaInfo,
         ["show-menu"] = args => ShowMenu?.Invoke(),
@@ -74,6 +76,21 @@ public class GuiCommand
         Window? win = Activator.CreateInstance(winType) as Window;
         new WindowInteropHelper(win).Owner = MainForm.Instance!.Handle;
         win?.ShowDialog();
+    }
+
+    void ShowConfEditor(IList<string> args)
+    {
+        string? search = args.Count > 0 ? args[0] : null;
+        var existing = System.Windows.Application.Current.Windows.OfType<ConfWindow>().FirstOrDefault(window => window.IsVisible);
+        if (existing != null) {
+            if (search != null) existing.NavigateTo(search);
+            else existing.ResetNavigation();
+            existing.Activate();
+            return;
+        }
+        var window = new ConfWindow(search);
+        new WindowInteropHelper(window).Owner = MainForm.Instance!.Handle;
+        window.ShowDialog();
     }
 
     void LoadSubtitle(IList<string> args)
@@ -384,7 +401,7 @@ public class GuiCommand
 
         if (path.Contains(Folder.Startup.TrimEnd(Path.DirectorySeparatorChar), StringComparison.CurrentCultureIgnoreCase))
         {
-            Msg.ShowWarning(_("mpv.net is already in the Path environment variable."));
+            Msg.ShowWarning(_("FrameFlow is already in the Path environment variable."));
             return;
         }
 
@@ -392,7 +409,7 @@ public class GuiCommand
             Folder.Startup.TrimEnd(Path.DirectorySeparatorChar) + ";" + path,
             EnvironmentVariableTarget.User);
 
-        Msg.ShowInfo(_("mpv.net was successfully added to the Path environment variable."));
+        Msg.ShowInfo(_("FrameFlow was successfully added to the Path environment variable."));
     }
 
     void RemoveFromPath()
@@ -401,7 +418,7 @@ public class GuiCommand
 
         if (!path.Contains(Folder.Startup.TrimEnd(Path.DirectorySeparatorChar)))
         {
-            Msg.ShowWarning(_("mpv.net was not found in the Path environment variable."));
+            Msg.ShowWarning(_("FrameFlow was not found in the Path environment variable."));
             return;
         }
 
@@ -410,7 +427,7 @@ public class GuiCommand
 
         Environment.SetEnvironmentVariable("Path", path, EnvironmentVariableTarget.User);
 
-        Msg.ShowInfo(_("mpv.net was successfully removed from the Path environment variable."));
+        Msg.ShowInfo(_("FrameFlow was successfully removed from the Path environment variable."));
     }
 
     // deprecated

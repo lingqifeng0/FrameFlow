@@ -5,7 +5,7 @@ using static MpvNet.Native.LibMpv;
 
 namespace MpvNet;
 
-public class MpvClient
+public partial class MpvClient
 {
     public event Action<string[]>? ClientMessage;            // client-message      MPV_EVENT_CLIENT_MESSAGE
     public event Action<mpv_log_level, string>? LogMessage;  // log-message         MPV_EVENT_LOG_MESSAGE
@@ -29,6 +29,35 @@ public class MpvClient
 
     public nint Handle { get; set; }
 
+    readonly Dictionary<ulong, Action> _hooks = [];
+    ulong _nextHookId;
+
+    public void AddHook(string name, int priority, Action action)
+    {
+        lock (_hooks) {
+            ulong id = ++_nextHookId;
+            _hooks.Add(id, action);
+            var error = mpv_hook_add(Handle, id, name, priority);
+            if (error < 0) {
+                _hooks.Remove(id);
+                throw new InvalidOperationException($"Unable to register mpv hook {name}: {error}");
+            }
+        }
+    }
+
+    void RunHook(mpv_event evt)
+    {
+        var data = Marshal.PtrToStructure<mpv_event_hook>(evt.data);
+        try {
+            Action? action;
+            lock (_hooks) _hooks.TryGetValue(evt.reply_userdata, out action);
+            action?.Invoke();
+        } finally {
+            // Every hook must release the core, including a callback that fails.
+            mpv_hook_continue(Handle, data.id);
+        }
+    }
+
     public void EventLoop()
     {
         while (true)
@@ -40,6 +69,9 @@ public class MpvClient
             {
                 switch (evt.event_id)
                 {
+                    case mpv_event_id.MPV_EVENT_HOOK:
+                        RunHook(evt);
+                        break;
                     case mpv_event_id.MPV_EVENT_SHUTDOWN:
                         OnShutdown();
                         return;
@@ -222,26 +254,33 @@ public class MpvClient
     }
 
     public void CommandV(params string[] args)
+        => ExecuteCommandArguments(false, args);
+
+    // libmpv copies arguments before returning. Queuing slider commands avoids
+    // blocking the UI thread on decoding/presentation during a pointer move.
+    public void CommandVAsync(params string[] args)
+        => ExecuteCommandArguments(true, args);
+
+    void ExecuteCommandArguments(bool asynchronous, string[] args)
     {
         int count = args.Length + 1;
         IntPtr[] pointers = new IntPtr[count];
         IntPtr rootPtr = Marshal.AllocHGlobal(IntPtr.Size * count);
 
-        for (int index = 0; index < args.Length; index++)
-        {
-            var bytes = GetUtf8Bytes(args[index]);
-            IntPtr ptr = Marshal.AllocHGlobal(bytes.Length);
-            Marshal.Copy(bytes, 0, ptr, bytes.Length);
-            pointers[index] = ptr;
+        mpv_error err;
+        try {
+            for (int index = 0; index < args.Length; index++) {
+                var bytes = GetUtf8Bytes(args[index]);
+                IntPtr ptr = Marshal.AllocHGlobal(bytes.Length);
+                pointers[index] = ptr;
+                Marshal.Copy(bytes, 0, ptr, bytes.Length);
+            }
+            Marshal.Copy(pointers, 0, rootPtr, count);
+            err = asynchronous ? mpv_command_async(Handle, 0, rootPtr) : mpv_command(Handle, rootPtr);
+        } finally {
+            foreach (IntPtr ptr in pointers) if (ptr != IntPtr.Zero) Marshal.FreeHGlobal(ptr);
+            Marshal.FreeHGlobal(rootPtr);
         }
-
-        Marshal.Copy(pointers, 0, rootPtr, count);
-        mpv_error err = mpv_command(Handle, rootPtr);
-
-        foreach (IntPtr ptr in pointers)
-            Marshal.FreeHGlobal(ptr);
-
-        Marshal.FreeHGlobal(rootPtr);
 
         if (err < 0)
             HandleError(err, "error executing command: " + string.Join("\n", args));
@@ -391,6 +430,52 @@ public class MpvClient
             HandleError(err, "error getting property: " + name);
 
         return "";
+    }
+
+    public string[] GetPropertyStringList(string name)
+    {
+        if (Handle == IntPtr.Zero) return [];
+        var error = mpv_get_property(Handle, GetUtf8Bytes(name), mpv_format.MPV_FORMAT_NODE, out mpv_node node);
+        if (error < 0) return [];
+        try {
+            if (node.format != mpv_format.MPV_FORMAT_NODE_ARRAY || node.list == IntPtr.Zero) return [];
+            var list = Marshal.PtrToStructure<mpv_node_list>(node.list);
+            var values = new List<string>();
+            for (int index = 0; index < list.num; index++) {
+                var item = Marshal.PtrToStructure<mpv_node>(list.values + index * Marshal.SizeOf<mpv_node>());
+                if (item.format == mpv_format.MPV_FORMAT_STRING) values.Add(ConvertFromUtf8(item.str));
+            }
+            return values.ToArray();
+        }
+        finally { mpv_free_node_contents(ref node); }
+    }
+
+    public void SetPropertyStringList(string name, IReadOnlyList<string> values)
+    {
+        // Use a node array: no path-list delimiters or quoting can corrupt a
+        // shader filename. mpv copies the node before this call returns.
+        var strings = new List<IntPtr>();
+        IntPtr entries = IntPtr.Zero, listPointer = IntPtr.Zero;
+        try {
+            int size = Marshal.SizeOf<mpv_node>();
+            entries = Marshal.AllocHGlobal(Math.Max(1, values.Count) * size);
+            for (int index = 0; index < values.Count; index++) {
+                byte[] bytes = GetUtf8Bytes(values[index]);
+                IntPtr text = Marshal.AllocHGlobal(bytes.Length);
+                strings.Add(text); Marshal.Copy(bytes, 0, text, bytes.Length);
+                Marshal.StructureToPtr(new mpv_node { str = text, format = mpv_format.MPV_FORMAT_STRING }, entries + index * size, false);
+            }
+            listPointer = Marshal.AllocHGlobal(Marshal.SizeOf<mpv_node_list>());
+            Marshal.StructureToPtr(new mpv_node_list { num = values.Count, values = entries, keys = IntPtr.Zero }, listPointer, false);
+            var node = new mpv_node { list = listPointer, format = mpv_format.MPV_FORMAT_NODE_ARRAY };
+            var error = mpv_set_property(Handle, GetUtf8Bytes(name), mpv_format.MPV_FORMAT_NODE, ref node);
+            if (error < 0) HandleError(error, "error setting list property: " + name);
+        }
+        finally {
+            foreach (var pointer in strings) Marshal.FreeHGlobal(pointer);
+            if (entries != IntPtr.Zero) Marshal.FreeHGlobal(entries);
+            if (listPointer != IntPtr.Zero) Marshal.FreeHGlobal(listPointer);
+        }
     }
 
     public void SetPropertyString(string name, string value)

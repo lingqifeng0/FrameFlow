@@ -7,6 +7,7 @@ using System.Windows.Media;
 using Forms = System.Windows.Forms;
 
 using MpvNet.Windows.UI;
+using MpvNet.Windows.Modern;
 
 namespace MpvNet.Windows.WPF;
 
@@ -19,7 +20,7 @@ public partial class StringSettingControl : UserControl, ISettingControl
         StringSetting = stringSetting;
         InitializeComponent();
         DataContext = this;
-        TitleTextBox.Text = stringSetting.Name;
+        TitleTextBox.Text = stringSetting.DisplayTitle ?? stringSetting.Name;
         HelpTextBox.Text = stringSetting.Help;
         ValueTextBox.Text = StringSetting.Value;
 
@@ -38,10 +39,11 @@ public partial class StringSettingControl : UserControl, ISettingControl
             HelpTextBox.Visibility = Visibility.Collapsed;
     }
 
-    public Theme? Theme => Theme.Current;
+    public Theme? Theme => ModernSettingsTheme.Current;
 
     public bool Contains(string search)
     {
+        if (StringSetting.Name?.Contains(search, StringComparison.OrdinalIgnoreCase) == true) return true;
         if (TitleTextBox.Text.IndexOf(search, StringComparison.InvariantCultureIgnoreCase) > -1)
             return true;
 

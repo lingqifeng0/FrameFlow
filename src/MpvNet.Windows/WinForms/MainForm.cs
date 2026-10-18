@@ -6,6 +6,8 @@ using System.Threading;
 using System.Windows.Forms;
 using System.Windows.Threading;
 using System.Text.RegularExpressions;
+using System.Text.Json;
+using MpvNet.Windows.Modern;
 
 using MpvNet.Windows.WPF;
 using MpvNet.Windows.UI;
@@ -41,13 +43,14 @@ public partial class MainForm : Form
     int _cursorAutohide = 1000;
 
     bool _contextMenuIsReady;
-    bool _wasMaximized;
     bool _maxSizeSet;
     bool _isCursorVisible = true;
 
     public MainForm()
     {
         InitializeComponent();
+
+        InitializeModernUi();
 
         UpdateDarkMode();
 
@@ -68,10 +71,12 @@ public partial class MainForm : Form
             GuiCommand.Current.WindowScaleNet += GuiCommand_WindowScaleNet;
             GuiCommand.Current.ShowMenu += GuiCommand_ShowMenu;
 
-            Player.Init(Handle, true);
+            Player.Init(_videoSurface.Handle, true, true);
+            InitializeModernPlayer();
 
-            Player.ObserveProperty("window-maximized", PropChangeWindowMaximized); // bool methods not working correctly
-            Player.ObserveProperty("window-minimized", PropChangeWindowMinimized); // bool methods not working correctly
+            // mpv is embedded in VideoSurface, whose native window state is not
+            // the state of this top-level form. A surface resize can report
+            // window-maximized=false even while this form remains maximized.
             Player.ObserveProperty("cursor-autohide", PropChangeCursorAutohide);
 
             Player.ObservePropertyBool("border", PropChangeBorder);
@@ -91,7 +96,9 @@ public partial class MainForm : Form
             Player.ObservePropertyDouble("window-scale", PropChangeWindowScale);
 
             CommandLine.ProcessCommandLineArgsPostInit();
-            CommandLine.ProcessCommandLineFiles();
+            Player.SetPropertyBool("resume-playback", false);
+            Player.SetPropertyBool("save-position-on-quit", false);
+            // Startup files are opened in OnShown after the chrome's first paint.
 
             _taskbarButtonCreatedMessage = RegisterWindowMessage("TaskbarButtonCreated");
 
@@ -156,6 +163,29 @@ public partial class MainForm : Form
 
     void Player_ClientMessage(string[] args)
     {
+        if (args.Length >= 3 && args[0] == "key-binding" && args[1] is "modern-hold-back" or "modern-hold-forward" or "modern-hold-temporary") {
+            Ui(() => HandleHeldNavigation(args[1] == "modern-hold-temporary" ? 2 : args[1] == "modern-hold-back" ? -1 : 1, args[2]));
+            return;
+        }
+        if (args.Length > 0 && args[0] == "modern-playlist") {
+            Ui(() => {
+                if (args.Length >= 3 && args[1] == "mode" && args[2] is "sequence" or "single-loop" or "list-loop" or "random" or "stop-current")
+                    ApplyPlaylistMode(args[2]);
+                else if (args.Length >= 2 && args[1] == "refresh-folder") RefreshCurrentFolderPlaylist();
+            });
+            return;
+        }
+        if (args.Length > 0 && args[0] == "modern-window")
+        {
+            Ui(() => HandleModernWindowMessage(args));
+            return;
+        }
+        if (args.Length > 0 && args[0] == "modern-tool")
+        {
+            Ui(() => HandleModernToolMessage(args));
+            return;
+        }
+        if (args.Length == 0) return;
         if (Command.Current.Commands.ContainsKey(args[0]))
             Command.Current.Commands[args[0]].Invoke(new ArraySegment<string>(args, 1, args.Length - 1));
         else if (GuiCommand.Current.Commands.ContainsKey(args[0]))
@@ -262,7 +292,7 @@ public partial class MainForm : Form
 
     void PropChangeFullscreen(bool value) => BeginInvoke(() => CycleFullscreen(value));
 
-    bool IsFullscreen => WindowState == FormWindowState.Maximized && FormBorderStyle == FormBorderStyle.None;
+    bool IsFullscreen => Player.Fullscreen;
 
     bool KeepSize() => App.StartSize == "session" || App.StartSize == "always";
 
@@ -489,7 +519,6 @@ public partial class MainForm : Form
                     if (menuItem != null)
                     {
                         menuItem.Click += (sender, args) => Player.Command(binding.Command);
-                        menuItem.InputGestureText = binding.Input;
                     }
                 }
             }
@@ -534,6 +563,13 @@ public partial class MainForm : Form
 
     void SetFormPosAndSize(bool force = false, bool checkAutofit = true, bool load = false)
     {
+        // The desktop shell owns the host size. Video reconfiguration must not
+        // run the former aspect/autofit routine over a user's resized window.
+        if (_modernSettings != null) {
+            if (Player.Fullscreen && !_modernFullscreen) CycleFullscreen(true);
+            Player.WasInitialSizeSet = true;
+            return;
+        }
         if (!force)
         {
             if (WindowState != FormWindowState.Normal)
@@ -761,45 +797,7 @@ public partial class MainForm : Form
 
     public void CycleFullscreen(bool enabled)
     {
-        _lastCycleFullscreen = Environment.TickCount;
-        Player.Fullscreen = enabled;
-
-        if (enabled)
-        {
-            if (WindowState != FormWindowState.Maximized || FormBorderStyle != FormBorderStyle.None)
-            {
-                FormBorderStyle = FormBorderStyle.None;
-                WindowState = FormWindowState.Maximized;
-
-                if (_wasMaximized)
-                {
-                    Rectangle bounds = Screen.FromControl(this).Bounds;
-                    uint SWP_SHOWWINDOW = 0x0040;
-                    IntPtr HWND_TOP= IntPtr.Zero;
-                    SetWindowPos(Handle, HWND_TOP, bounds.X, bounds.Y, bounds.Width, bounds.Height, SWP_SHOWWINDOW);
-                }
-            }
-        }
-        else
-        {
-            if (WindowState == FormWindowState.Maximized && FormBorderStyle == FormBorderStyle.None)
-            {
-                if (_wasMaximized)
-                    WindowState = FormWindowState.Maximized;
-                else
-                {
-                    WindowState = FormWindowState.Normal;
-
-                    if (!Player.WasInitialSizeSet)
-                        SetFormPosAndSize();
-                }
-
-                FormBorderStyle = Player.Border ? FormBorderStyle.Sizable : FormBorderStyle.None;
-
-                if (!KeepSize())
-                    SetFormPosAndSize();
-            }
-        }
+        SetModernFullscreen(enabled);
     }
 
     public int GetHorizontalLocation(Screen screen)
@@ -843,7 +841,6 @@ public partial class MainForm : Form
 
         var (menuBindings, confBindings) = App.InputConf.GetBindings();
         _confBindings = confBindings;
-        var activeBindings = InputHelp.GetActiveBindings(menuBindings);
 
         foreach (Binding binding in menuBindings)
         {
@@ -871,10 +868,24 @@ public partial class MainForm : Form
                     }
                 };
 
-                menuItem.InputGestureText = InputHelp.GetBindingsForCommand(activeBindings, tempBinding.Command);
             }
         }
 
+        // Add the quick action even when the user's input.conf predates it.
+        var resetWindowItem = new WpfControls.MenuItem { Header = "还原初始窗口大小" };
+        resetWindowItem.Click += (_, _) => ResetModernWindowSize();
+        var resetVideoItem = new WpfControls.MenuItem { Header = "还原初始画面大小和位置" };
+        resetVideoItem.Click += (_, _) => ResetVideoView();
+        ContextMenu.Items.Insert(0, resetWindowItem);
+        ContextMenu.Items.Insert(1, resetVideoItem);
+        var pictureItem = new WpfControls.MenuItem { Header = "画面调节（亮度 / 夜间护眼）" };
+        pictureItem.Click += (_, _) => ShowPicture();
+        var nightItem = new WpfControls.MenuItem { Header = "夜间护眼", IsCheckable = true };
+        nightItem.Click += (_, _) => SetModernNightMode(!_modernSettings.NightMode);
+        ContextMenu.Opened += (_, _) => nightItem.IsChecked = _modernSettings.NightMode;
+        ContextMenu.Items.Insert(2, pictureItem);
+        ContextMenu.Items.Insert(3, nightItem);
+        ContextMenu.Items.Insert(4, new WpfControls.Separator());
         _contextMenuIsReady = true;
     }
     
@@ -931,17 +942,18 @@ public partial class MainForm : Form
         string text = Player.Expand(title);
 
         if (text == "(unavailable)" || Player.PlaylistPos == -1)
-            text = "mpv.net";
+            text = AppInfo.Name;
 
         Text = text;
     }
 
     void SaveWindowProperties()
     {
-        if (WindowState == FormWindowState.Normal && WasShown)
+        if (WindowState == FormWindowState.Normal && WasShown && !_modernFullscreen && !_modernWindowTransition)
         {
             SavePosition();
             App.Settings.WindowSize = ClientSize;
+            RememberModernWindowSize();
         }
     }
 
@@ -965,7 +977,8 @@ public partial class MainForm : Form
     protected override CreateParams CreateParams {
         get {
             CreateParams cp = base.CreateParams;
-            cp.Style |= 0x00020000 /* WS_MINIMIZEBOX */;
+            cp.Style |= 0x00020000 /* WS_MINIMIZEBOX */ | 0x00010000 /* WS_MAXIMIZEBOX */ |
+                0x02000000 /* WS_CLIPCHILDREN */;
             return cp;
         }
     }
@@ -979,7 +992,7 @@ public partial class MainForm : Form
                 return;
 
             if (value.EndsWith("} - mpv"))
-                value = value.Replace("} - mpv", "} - mpv.net");
+                value = value.Replace("} - mpv", "} - " + AppInfo.Name);
 
             _title = value;
         }
@@ -989,9 +1002,13 @@ public partial class MainForm : Form
     {
         switch (m.Msg)
         {
+            case 0x0021: // WM_MOUSEACTIVATE
+                // Child default procedures ask the top-level window to activate.
+                // Sending this back to mpv recurses through its parent again.
+                m.Result = new IntPtr(1); // MA_ACTIVATE: keep the first click
+                return;
             case 0x0007: // WM_SETFOCUS
             case 0x0008: // WM_KILLFOCUS
-            case 0x0021: // WM_MOUSEACTIVATE
             case 0x0100: // WM_KEYDOWN
             case 0x0101: // WM_KEYUP
             case 0x0104: // WM_SYSKEYDOWN
@@ -1004,7 +1021,6 @@ public partial class MainForm : Form
             case 0x0207: // WM_MBUTTONDOWN
             case 0x0208: // WM_MBUTTONUP
             case 0x0209: // WM_MBUTTONDBLCLK
-            case 0x020a: // WM_MOUSEWHEEL
             case 0x020b: // WM_XBUTTONDOWN
             case 0x020c: // WM_XBUTTONUP
             case 0x020e: // WM_MOUSEHWHEEL
@@ -1019,26 +1035,10 @@ public partial class MainForm : Form
             case 0x0290: // WM_IME_KEYDOWN
             case 0x0291: // WM_IME_KEYUP
             case 0x02a3: // WM_MOUSELEAVE
-                {
-                    bool ignore = false;
-
-                    if (m.Msg == 0x0100) // WM_KEYDOWN
-                    {
-                        Keys keyCode = (Keys)(int)m.WParam & Keys.KeyCode;
-
-                        if (keyCode == Keys.Escape && _contextMenuIsReady && ContextMenu.IsOpen)
-                        {
-                            ignore = true;
-                            ContextMenu.IsOpen = false;
-                        }
-                    }
-
-                    if (MpvWindowHandle == IntPtr.Zero)
-                        MpvWindowHandle = FindWindowEx(Handle, IntPtr.Zero, "mpv", null);
-
-                    if (MpvWindowHandle != IntPtr.Zero && !ignore)
-                        m.Result = SendMessage(MpvWindowHandle, m.Msg, m.WParam, m.LParam);
-                }
+                ForwardVideoInput(this, ref m);
+                break;
+            case 0x020a: // WM_MOUSEWHEEL: never forward a handled step twice
+                if (ForwardVideoInput(this, ref m)) return;
                 break;
             case 0x001A: // WM_SETTINGCHANGE
                 UpdateDarkMode();
@@ -1063,19 +1063,15 @@ public partial class MainForm : Form
                 GlobalHotkey.Execute(m.WParam.ToInt32());
                 break;
             case 0x200: // WM_MOUSEMOVE
-                if (Environment.TickCount - _lastCycleFullscreen > 500)
-                {
-                    Point pos = PointToClient(Cursor.Position);
-                    Player.Command($"mouse {pos.X} {pos.Y}");
-                }
-
-                if (IsCursorPosDifferent(_lastCursorPosition))
-                    ShowCursor();
+                ForwardVideoInput(this, ref m);
                 break;
             case 0x203: // WM_LBUTTONDBLCLK
-                {
-                    Point pos = PointToClient(Cursor.Position);
-                    Player.Command($"mouse {pos.X} {pos.Y} 0 double");
+                ForwardVideoInput(this, ref m);
+                break;
+            case 0xA3: // WM_NCLBUTTONDBLCLK
+                if (m.WParam.ToInt32() == 2 && _modernSettings != null) { // HTCAPTION
+                    ExecuteDoubleClickAction(_modernSettings.TitleBarDoubleClickAction);
+                    return;
                 }
                 break;
             case 0x2E0: // WM_DPICHANGED
@@ -1103,14 +1099,23 @@ public partial class MainForm : Form
                 }
                 break;
             case 0x0083: // WM_NCCALCSIZE
-                if ((int)m.WParam == 1 && !Player.TitleBar && !IsFullscreen)
-                {
-                    var nccalcsize_params = Marshal.PtrToStructure<NCCALCSIZE_PARAMS>(m.LParam);
-                    RECT[] rects = nccalcsize_params.rgrc;
-                    int h = GetTitleBarHeight(Handle, GetDpi(Handle));
-                    rects[0].Top = rects[0].Top - h;
-                    Marshal.StructureToPtr(nccalcsize_params, m.LParam, false);
-                }
+                // The custom chrome owns the entire client area.
+                // Preserve the native top-left child alignment. Pixel reuse is
+                // disabled separately through SWP_NOCOPYBITS during resizing.
+                m.Result = IntPtr.Zero;
+                return;
+            case 0x0046: // WM_WINDOWPOSCHANGING
+                DiscardModernResizePixels(m.LParam);
+                break;
+            case 0x0024: // WM_GETMINMAXINFO
+                base.WndProc(ref m);
+                if (!_modernFullscreen) SetModernMaximizedWorkArea(m.LParam);
+                return;
+            case 0x0232: // WM_EXITSIZEMOVE
+                EndModernWindowResize();
+                RememberModernWindowSize();
+                SaveModernSettings();
+                PublishModernWindowState();
                 break;
             case 0x231: // WM_ENTERSIZEMOVE
             case 0x005: // WM_SIZE
@@ -1118,6 +1123,7 @@ public partial class MainForm : Form
                     SnapManager.OnSizeAndEnterSizeMove(this);
                 break;
             case 0x214: // WM_SIZING
+                BeginModernWindowResize();
                 if (Player.KeepaspectWindow)
                 {
                     RECT rc = Marshal.PtrToStructure<RECT>(m.LParam);
@@ -1146,50 +1152,24 @@ public partial class MainForm : Form
                 }
                 return;
             case 0x84: // WM_NCHITTEST
-                // resize borderless window
-                if ((!Player.Border || !Player.TitleBar) && !Player.Fullscreen)
-                {
-                    const int HTCLIENT = 1;
-                    const int HTLEFT = 10;
-                    const int HTRIGHT = 11;
-                    const int HTTOP = 12;
-                    const int HTTOPLEFT = 13;
-                    const int HTTOPRIGHT = 14;
-                    const int HTBOTTOM = 15;
-                    const int HTBOTTOMLEFT = 16;
-                    const int HTBOTTOMRIGHT = 17;
-
-                    int x = (short)(m.LParam.ToInt32() & 0xFFFF); // LoWord
-                    int y = (short)(m.LParam.ToInt32() >> 16);    // HiWord
-
-                    Point pt = PointToClient(new Point(x, y));
-                    Size cs = ClientSize;
-                    m.Result = new IntPtr(HTCLIENT);
-                    int distance = FontHeight / 3;
-
-                    if (pt.X >= cs.Width - distance && pt.Y >= cs.Height - distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTBOTTOMRIGHT);
-                    else if (pt.X <= distance && pt.Y >= cs.Height - distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTBOTTOMLEFT);
-                    else if (pt.X <= distance && pt.Y <= distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTTOPLEFT);
-                    else if (pt.X >= cs.Width - distance && pt.Y <= distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTTOPRIGHT);
-                    else if (pt.Y <= distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTTOP);
-                    else if (pt.Y >= cs.Height - distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTBOTTOM);
-                    else if (pt.X <= distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTLEFT);
-                    else if (pt.X >= cs.Width - distance && cs.Height >= distance)
-                        m.Result = new IntPtr(HTRIGHT);
-
-                    return;
-                }
-                break;
+                // The eight client grips handle resizing without a native frame.
+                m.Result = new IntPtr(1); // HTCLIENT
+                return;
             case 0x4A: // WM_COPYDATA
                 {
                     var copyData = (CopyDataStruct)m.GetLParam(typeof(CopyDataStruct))!;
+                    if (copyData.lpData.StartsWith('{')) {
+                        try {
+                            var request = JsonSerializer.Deserialize<ForwardedOpenRequest>(copyData.lpData);
+                            if (request == null || request.Protocol != 1 || request.Identity != InstanceRouting.Identity) return;
+                            SaveCurrentPosition();
+                            if (request.Mode == "command" && request.Command != null) Player.Command(request.Command);
+                            else Player.LoadFiles(request.Files, true, request.Mode == "queue", request.Options);
+                            Activate();
+                            m.Result = new IntPtr(1);
+                        } catch (Exception ex) { Terminal.WriteError(ex.Message); }
+                        return;
+                    }
                     string[] args = copyData.lpData.Split('\n');
                     string mode = args[0];
                     args = args.Skip(1).ToArray();
@@ -1197,7 +1177,7 @@ public partial class MainForm : Form
                     switch (mode)
                     {
                         case "single":
-                            Player.LoadFiles(args, true, false);
+                            LoadModernFiles(args);
                             break;
                         case "queue":
                             foreach (string file in args)
@@ -1228,6 +1208,66 @@ public partial class MainForm : Form
             base.WndProc(ref m);
     }
 
+    bool ForwardVideoInput(Control source, ref Message m)
+    {
+        bool clientMouse = m.Msg is 0x0200 or 0x0201 or 0x0202 or 0x0203 or
+            0x0204 or 0x0205 or 0x0206 or 0x0207 or 0x0208 or 0x0209 or 0x020b or 0x020c;
+        bool otherInput = m.Msg is 0x0007 or 0x0008 or 0x0100 or 0x0101 or 0x0104 or 0x0105 or
+            0x020a or 0x020e or 0x0280 or 0x0281 or 0x0282 or 0x0283 or 0x0284 or
+            0x0285 or 0x0286 or 0x0288 or 0x0290 or 0x0291 or 0x02a3;
+        if ((!clientMouse && !otherInput) || Player.Handle == IntPtr.Zero || _videoSurface == null)
+            return false;
+
+        // A screenshot preview owns keyboard/mouse input, including remote messages
+        // addressed to the disabled player behind it. Do not run playback shortcuts.
+        if (_screenshotDialog is { Visible: true } &&
+            (clientMouse || m.Msg is 0x0100 or 0x0101 or 0x0104 or 0x0105 or 0x020a or 0x020e))
+            return false;
+
+        if (HandleVideoViewInput(source, ref m)) return true;
+        if (HandleVideoWheelInput(ref m)) return true;
+        if (m.Msg is 0x0100 or 0x0104) ShowFullscreenFooter();
+
+        if (m.Msg == 0x0100 && (Keys)(int)m.WParam == Keys.Escape && _contextMenuIsReady && ContextMenu.IsOpen)
+        {
+            ContextMenu.IsOpen = false;
+            return true;
+        }
+
+        IntPtr coordinates = m.LParam;
+        if (clientMouse)
+        {
+            long packed = m.LParam.ToInt64();
+            var point = new Point((short)(packed & 0xffff), (short)((packed >> 16) & 0xffff));
+            if (source != _videoSurface)
+                point = _videoSurface.PointToClient(source.PointToScreen(point));
+            if (source == this && !_videoSurface.ClientRectangle.Contains(point))
+                return false;
+
+            coordinates = new IntPtr((point.X & 0xffff) | ((point.Y & 0xffff) << 16));
+            _lastCursorPosition = _videoSurface.PointToScreen(point);
+            _lastCursorChanged = Environment.TickCount;
+            ShowCursor();
+            RecordFullscreenPointer(_videoSurface.PointToScreen(point));
+            if (m.Msg == 0x0203)
+            {
+                if (_modernSettings.VideoDoubleClickAction == "input-conf")
+                    Player.CommandV("mouse", point.X.ToString(CultureInfo.InvariantCulture),
+                        point.Y.ToString(CultureInfo.InvariantCulture), "0", "double");
+                else
+                    ExecuteDoubleClickAction(_modernSettings.VideoDoubleClickAction);
+                return true;
+            }
+        }
+
+        if (MpvWindowHandle == IntPtr.Zero)
+            MpvWindowHandle = FindWindowEx(_videoSurface.Handle, IntPtr.Zero, "mpv", null);
+        if (MpvWindowHandle == IntPtr.Zero) return false;
+        if (m.Msg is 0x0100 or 0x0104 or 0x020a or 0x020e) AllowNavigationInput();
+        m.Result = SendMessage(MpvWindowHandle, m.Msg, m.WParam, coordinates);
+        return true;
+    }
+
     protected override void OnActivated(EventArgs e)
     {
         base.OnActivated(e);
@@ -1249,15 +1289,20 @@ public partial class MainForm : Form
 
     void CursorTimer_Tick(object sender, EventArgs e)
     {
+        if (!_modernSettings.AutoHideCursor || _videoPanning ||
+            !IsVideoViewPoint(_videoSurface.PointToClient(MousePosition)) ||
+            ActiveForm != this || ContextMenu.IsVisible)
+        {
+            ShowCursor();
+            return;
+        }
+
         if (IsCursorPosDifferent(_lastCursorPosition))
         {
             _lastCursorPosition = MousePosition;
             _lastCursorChanged = Environment.TickCount;
         }
-        else if ((Environment.TickCount - _lastCursorChanged > _cursorAutohide) &&
-            ClientRectangle.Contains(PointToClient(MousePosition)) &&
-            ActiveForm == this && !ContextMenu.IsVisible && !IsMouseInOsc())
-
+        else if (Environment.TickCount - _lastCursorChanged > _cursorAutohide)
             HideCursor();
     }
 
@@ -1269,7 +1314,11 @@ public partial class MainForm : Form
             _taskbar.SetValue(Player.GetPropertyDouble("time-pos", false), Player.Duration.TotalSeconds);
     }
 
-    void PropChangeOnTop(bool value) => BeginInvoke(() => TopMost = value);
+    void PropChangeOnTop(bool value) => Ui(() => {
+        TopMost = value;
+        UpdatePinButton();
+        PublishModernWindowState();
+    });
     
     void PropChangeAid(string value) => Player.AID = value;
 
@@ -1281,38 +1330,6 @@ public partial class MainForm : Form
     
     void PropChangeEdition(int value) => Player.Edition = value;
     
-    void PropChangeWindowMaximized()
-    {
-        if (!WasShown)
-            return;
-
-        BeginInvoke(() =>
-        {
-            Player.WindowMaximized = Player.GetPropertyBool("window-maximized");
-
-            if (Player.WindowMaximized && WindowState != FormWindowState.Maximized)
-                WindowState = FormWindowState.Maximized;
-            else if (!Player.WindowMaximized && WindowState == FormWindowState.Maximized)
-                WindowState = FormWindowState.Normal;
-        });
-    }
-
-    void PropChangeWindowMinimized()
-    {
-        if (!WasShown)
-            return;
-
-        BeginInvoke(() =>
-        {
-            Player.WindowMinimized = Player.GetPropertyBool("window-minimized");
-
-            if (Player.WindowMinimized && WindowState != FormWindowState.Minimized)
-                WindowState = FormWindowState.Minimized;
-            else if (!Player.WindowMinimized && WindowState == FormWindowState.Minimized)
-                WindowState = FormWindowState.Normal;
-        });
-    }
-
     void PropChangeCursorAutohide()
     {
         string strValue = Player.GetPropertyString("cursor-autohide");
@@ -1347,6 +1364,9 @@ public partial class MainForm : Form
 
         Player.TitleBar = enabled;
 
+        // Client chrome needs no legacy native title-bar height jiggle.
+        if (_modernHeader != null) return;
+
         BeginInvoke(() => {
             SetSize(ClientSize.Width, ClientSize.Height, Screen.FromControl(this), false);
             Height += 1;
@@ -1363,6 +1383,7 @@ public partial class MainForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
+        RestoreModernWindowSize();
         _lastCycleFullscreen = Environment.TickCount;
         SetFormPosAndSize(false, true, true);
     }
@@ -1373,12 +1394,20 @@ public partial class MainForm : Form
         ShowCursor();
     }
 
+    protected override void OnDeactivate(EventArgs e)
+    {
+        EndHeldNavigation(false);
+        base.OnDeactivate(e);
+    }
+
     protected override void OnShown(EventArgs e)
     {
         base.OnShown(e);
 
-        if (WindowState == FormWindowState.Maximized)
-            Player.SetPropertyBool("window-maximized", true);
+        InstanceRouting.Register(Handle);
+
+        // Paint before cold WPF/menu work and before the GPU opens its first file.
+        RepaintModernWindow();
 
         WpfApplication.Init();
         Theme.UpdateWpfColors();
@@ -1386,10 +1415,12 @@ public partial class MainForm : Form
         MessageBoxEx.MessageBackground = Theme.Current?.GetBrush("background");
         MessageBoxEx.ButtonBackground  = Theme.Current?.GetBrush("highlight");
         InitAndBuildContextMenu();
-        Cursor.Position = new Point(Cursor.Position.X + 1, Cursor.Position.Y);
         GlobalHotkey.RegisterGlobalHotkeys(Handle);
         StrongReferenceMessenger.Default.Send(new MainWindowIsLoadedMessage());
         WasShown = true;
+        CommandLine.ProcessCommandLineFiles();
+        _startupResumeRequest = false;
+        PublishModernWindowState();
     }
 
     void ContextMenu_Closed(object sender, System.Windows.RoutedEventArgs e) => MenuAutoResetEvent.Set();
@@ -1397,33 +1428,18 @@ public partial class MainForm : Form
     protected override void OnResize(EventArgs e)
     {
         base.OnResize(e);
+        LayoutWindowResizeGrips();
+        LayoutFullscreenChrome();
         SaveWindowProperties();
-        
-        if (FormBorderStyle != FormBorderStyle.None)
-        {
-            if (WindowState == FormWindowState.Maximized)
-                _wasMaximized = true;
-            else if (WindowState == FormWindowState.Normal)
-                _wasMaximized = false;
-        }
-
-        if (WasShown)
-        {
-            if (WindowState == FormWindowState.Minimized)
-                Player.SetPropertyBool("window-minimized", true);
-            else if (WindowState == FormWindowState.Normal)
-            {
-                Player.SetPropertyBool("window-maximized", false);
-                Player.SetPropertyBool("window-minimized", false);
-            }
-            else if (WindowState == FormWindowState.Maximized)
-                Player.SetPropertyBool("window-maximized", true);
-        }
+        if (WasShown && !_modernInteractiveResize) PublishModernWindowState();
     }
 
     protected override void OnFormClosing(FormClosingEventArgs e)
     {
         base.OnFormClosing(e);
+
+        ShutdownModernUi();
+        InstanceRouting.Unregister();
 
         if (Player.IsQuitNeeded)
             Player.CommandV("quit");
@@ -1444,7 +1460,7 @@ public partial class MainForm : Form
     {
         base.OnMouseMove(e);
 
-        if (IsCursorPosDifferent(_mouseDownLocation) &&
+        if (!_videoPanning && IsCursorPosDifferent(_mouseDownLocation) &&
             WindowState == FormWindowState.Normal &&
             e.Button == MouseButtons.Left && !IsMouseInOsc() &&
             Player.GetPropertyBool("window-dragging"))
@@ -1482,6 +1498,9 @@ public partial class MainForm : Form
             Player.LoadFiles(new[] { e.Data.GetData(DataFormats.Text)!.ToString()! }, true, append);
     }
 
+    protected override bool IsInputKey(Keys keyData) =>
+        (keyData & Keys.KeyCode) is Keys.Left or Keys.Right or Keys.Up or Keys.Down or Keys.Tab || base.IsInputKey(keyData);
+
     protected override void OnKeyDown(KeyEventArgs e)
     {
         // prevent annoying beep using alt key
@@ -1493,7 +1512,7 @@ public partial class MainForm : Form
 
     void ShowCursor()
     {
-        if (!_isCursorVisible && _cursorAutohide != -1)
+        if (!_isCursorVisible)
         {
             Cursor.Show();
             _isCursorVisible = true;

@@ -10,6 +10,7 @@ public abstract class Setting
     public string? Directory { get; set; }
     public string? Help { get; set; }
     public string? Name { get; set; }
+    public string? DisplayTitle { get; set; }
     public string? StartValue { get; set; }
     public string? Type { get; set; }
     public string? URL { get; set; }

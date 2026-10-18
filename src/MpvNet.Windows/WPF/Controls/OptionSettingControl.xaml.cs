@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 
 using MpvNet.Windows.UI;
+using MpvNet.Windows.Modern;
 
 namespace MpvNet.Windows.WPF;
 
@@ -15,7 +16,7 @@ public partial class OptionSettingControl : UserControl, ISettingControl
         OptionSetting = optionSetting;
         InitializeComponent();
         DataContext = this;
-        TitleTextBox.Text = optionSetting.Name;
+        TitleTextBox.Text = optionSetting.DisplayTitle ?? optionSetting.Name;
 
         if (string.IsNullOrEmpty(optionSetting.Help))
             HelpTextBox.Visibility = Visibility.Collapsed;
@@ -33,7 +34,7 @@ public partial class OptionSettingControl : UserControl, ISettingControl
         Link.SetURL(optionSetting.URL);
     }
 
-    public Theme? Theme => Theme.Current;
+    public Theme? Theme => ModernSettingsTheme.Current;
 
     public Setting Setting => OptionSetting;
 
@@ -41,6 +42,7 @@ public partial class OptionSettingControl : UserControl, ISettingControl
 
     public bool ContainsInternal(string search)
     {
+        if (OptionSetting.Name?.Contains(search, StringComparison.OrdinalIgnoreCase) == true) return true;
         if (TitleTextBox.Text.IndexOf(search, StringComparison.InvariantCultureIgnoreCase) > -1)
             return true;
 

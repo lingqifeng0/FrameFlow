@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <OutputType>Exe</OutputType>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/MpvNet.Windows/Modern/BufferedPanels.cs" Link="BufferedPanels.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/WindowResizeRendering.cs" Link="WindowResizeRendering.cs" />
+  </ItemGroup>
+</Project>

@@ -65,9 +65,12 @@ public class MainPlayer : MpvClient
     public event Action? Pause;
     public event Action<int>? PlaylistPosChanged;
     public event Action<Size>? VideoSizeChanged;
+    public event Action<string, IReadOnlyDictionary<string, string>?>? FileLoadRequested;
+    public bool FrontendResume { get; private set; }
 
-    public void Init(IntPtr formHandle, bool processCommandLine)
+    public void Init(IntPtr formHandle, bool processCommandLine, bool frontendResume = false)
     {
+        FrontendResume = frontendResume;
         App.ApplyShowMenuFix();
 
         MainHandle = mpv_create();
@@ -111,7 +114,7 @@ public class MainPlayer : MpvClient
         SetPropertyString("idle", "yes");
         SetPropertyString("screenshot-directory", "~~desktop/");
         SetPropertyString("osd-playing-msg", "${media-title}");
-        SetPropertyString("osc", "yes");
+        SetPropertyString("osc", "no");
         SetPropertyString("config-dir", ConfigFolder);
         SetPropertyString("config", "yes");
         
@@ -136,10 +139,22 @@ public class MainPlayer : MpvClient
 
         Environment.SetEnvironmentVariable("MPVNET_VERSION", AppInfo.Version.ToString());  // deprecated
 
+        if (FrontendResume) {
+            SetPropertyBool("resume-playback", false);
+            SetPropertyBool("save-position-on-quit", false);
+            // The modern front end appends directory entries without reloading
+            // the current file. Native auto-expansion rebuilds that entry and
+            // can discard its explicit per-file start timestamp.
+            SetPropertyString("autocreate-playlist", "no");
+        }
         mpv_error err = mpv_initialize(MainHandle);
 
         if (err < 0)
             throw new Exception("mpv_initialize error" + BR2 + GetError(err) + BR);
+
+        // Config files are read by mpv_initialize and can override pre-init
+        // defaults. Enforce front-end ownership before the first file opens.
+        if (FrontendResume) SetPropertyString("autocreate-playlist", "no");
 
         string idle = GetPropertyString("idle");
         App.Exit = idle == "no" || idle == "once";
@@ -158,7 +173,7 @@ public class MainPlayer : MpvClient
         // this means Lua scripts that use idle might not work correctly
         SetPropertyString("idle", "yes");
 
-        SetPropertyString("user-data/frontend/name", "mpv.net");
+        SetPropertyString("user-data/frontend/name", AppInfo.Name);
         SetPropertyString("user-data/frontend/version", AppInfo.Version.ToString());
         SetPropertyString("user-data/frontend/process-path", Environment.ProcessPath!);
 
@@ -247,7 +262,8 @@ public class MainPlayer : MpvClient
         get {
             if (_configFolder == null)
             {
-                string? mpvnet_home = Environment.GetEnvironmentVariable("MPVNET_HOME");
+                string? mpvnet_home = Environment.GetEnvironmentVariable("FRAMEFLOW_HOME")
+                    ?? Environment.GetEnvironmentVariable("MPVNET_HOME");
 
                 if (Directory.Exists(mpvnet_home))
                     return _configFolder = mpvnet_home.Separator;
@@ -255,7 +271,10 @@ public class MainPlayer : MpvClient
                 _configFolder = Folder.Startup + "portable_config";
 
                 if (!Directory.Exists(_configFolder))
-                    _configFolder = Folder.AppData + "mpv.net";
+                    // Reuse an existing non-portable profile without losing its
+                    // history. Fresh installations use the FrameFlow directory.
+                    _configFolder = Directory.Exists(Folder.AppData + "FrameFlow") || !Directory.Exists(Folder.AppData + "mpv.net")
+                        ? Folder.AppData + "FrameFlow" : Folder.AppData + "mpv.net";
 
                 if (!Directory.Exists(_configFolder))
                     Directory.CreateDirectory(_configFolder);
@@ -417,17 +436,10 @@ public class MainPlayer : MpvClient
 
     public void SetBluRayTitle(int id) => LoadFiles(new[] { @"bd://" + id }, false, false);
 
-    public DateTime LastLoad;
-
-    public void LoadFiles(string[]? files, bool loadFolder, bool append)
+    public void LoadFiles(string[]? files, bool loadFolder, bool append, IReadOnlyDictionary<string, string>? fileOptions = null)
     {
         if (files == null || files.Length == 0)
             return;
-
-        if ((DateTime.Now - LastLoad).TotalMilliseconds < 1000)
-            append = true;
-
-        LastLoad = DateTime.Now;
 
         for (int i = 0; i < files.Length; i++)
         {
@@ -458,7 +470,12 @@ public class MainPlayer : MpvClient
                 CommandV("sub-add", file);
             else
             {
-                if (i == 0 && !append)
+                if (i == 0 && !append) FileLoadRequested?.Invoke(file, fileOptions);
+                if (i == 0 && fileOptions != null)
+                    CommandV("loadfile", file, append ? "append" : "replace", "-1", string.Join(",", fileOptions
+                        .Where(pair => !FrontendResume || pair.Key is not ("resume-playback" or "save-position-on-quit")).Select(pair =>
+                        pair.Key + "=%" + Encoding.UTF8.GetByteCount(pair.Value) + "%" + pair.Value)));
+                else if (i == 0 && !append)
                     CommandV("loadfile", file);
                 else
                     CommandV("loadfile", file, "append");

@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/MpvNet/MpvNet.csproj" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/ScreenshotImage.cs" Link="ScreenshotImage.cs" />
+  </ItemGroup>
+</Project>

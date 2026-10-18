@@ -1,10 +1,23 @@
 ﻿
 using System.Text;
+using System.Text.RegularExpressions;
 
 namespace MpvNet;
 
 public static class InputHelp
 {
+    // Remove the inherited plain Escape exit binding from legacy input.conf
+    // files as well as new defaults. Keep unrelated commands and modifiers.
+    public static string RemoveEscapeQuitBinding(string content) => Regex.Replace(content,
+        @"(?im)^([ \t]*ESC[ \t]+)(?:async[ \t]+)?quit(?:-watch-later)?(?:[ \t]+-?\d+)?[ \t]*(?=#|\r?$)",
+        "$1ignore ");
+
+    // Route only simple, legacy screenshot bindings; keep explicit paths, scripts and sequences intact.
+    public static string RerouteScreenshotBindings(string content) => Regex.Replace(content,
+        @"(?m)^([ \t]*(?!#)\S+[ \t]+)(?:async[ \t]+)?screenshot(?:[ \t]+(video|subtitles))?[ \t]*(?=#|\r?$)",
+        match => match.Groups[1].Value + "script-message-to mpvnet modern-tool " +
+            (match.Groups[2].Value == "video" ? "screenshot-video" : "screenshot") + " ");
+
     public static List<Binding> GetDefaults()
     {
         List<Binding> b = [];
@@ -20,7 +33,8 @@ public static class InputHelp
         Add(b, new (_("File"), _("Add files/URLs to playlist from clipboard"), "script-message-to mpvnet open-clipboard append", "Ctrl+Shift+v"));
         Add(b, new (_("File"), "-"));
         Add(b, new (_("File"), _("Recent Files")));
-        Add(b, new (_("File"), _("Exit"), "quit", "Esc"));
+        Add(b, new (_("File"), _("Exit"), "quit"));
+        Add(b, new ("", "", "ignore", "Esc"));
 
         Add(b, new (_("Playback"), _("Play/Pause"), "script-message-to mpvnet play-pause", "Space"));
         Add(b, new (_("Playback"), _("Stop"), "stop", "Ctrl+s"));
@@ -38,12 +52,12 @@ public static class InputHelp
         Add(b, new (_("Navigate"), _("Jump To Next Frame"), "frame-step", "."));
         Add(b, new (_("Navigate"), _("Jump To Previous Frame"), "frame-back-step", ","));
         Add(b, new (_("Navigate"), "-"));
-        Add(b, new (_("Navigate"), _("Jump 5 sec forward"), "seek 5", "Right"));
-        Add(b, new (_("Navigate"), _("Jump 5 sec backward"), "seek -5", "Left"));
+        Add(b, new (_("Navigate"), "长按连续快进", "script-binding mpvnet/modern-hold-forward", "Right"));
+        Add(b, new (_("Navigate"), "长按连续快退", "script-binding mpvnet/modern-hold-back", "Left"));
+        Add(b, new (_("Navigate"), "独立长按快进（临时倍率）", "script-binding mpvnet/modern-hold-temporary", "TAB"));
         Add(b, new (_("Navigate"), "-"));
-        Add(b, new (_("Navigate"), _("Jump 30 sec forward"), "seek 30", "Up"));
-        Add(b, new (_("Navigate"), _("Jump 30 sec backward"), "seek -30", "Down"));
-        Add(b, new (_("Navigate"), "-"));
+        Add(b, new ("", "", "ignore", "Up"));
+        Add(b, new ("", "", "ignore", "Down"));
         Add(b, new (_("Navigate"), _("Jump 5 min forward"), "seek 300", "Ctrl+Right"));
         Add(b, new (_("Navigate"), _("Jump 5 min backward"), "seek -300", "Ctrl+Left"));
         Add(b, new (_("Navigate"), "-"));
@@ -63,6 +77,7 @@ public static class InputHelp
         Add(b, new (_("Pan & Scan"), _("Increase Height"), "add panscan 0.1", "W"));
         Add(b, new (_("Pan & Scan"), "-"));
         Add(b, new (_("Pan & Scan"), _("Reset"), "set video-zoom 0; set video-pan-x 0; set video-pan-y 0", "Ctrl+BS"));
+        Add(b, new (_("Pan & Scan"), "还原缩放与位置", "script-message-to mpvnet modern-tool zoom-reset", "Ctrl+0"));
 
         Add(b, new (_("Video"), _("Decrease Contrast"), "add contrast -1", "Ctrl+1"));
         Add(b, new (_("Video"), _("Increase Contrast"), "add contrast 1", "Ctrl+2"));
@@ -76,8 +91,8 @@ public static class InputHelp
         Add(b, new (_("Video"), _("Decrease Saturation"), "add saturation -1", "Ctrl+7"));
         Add(b, new (_("Video"), _("Increase Saturation"), "add saturation 1", "Ctrl+8"));
         Add(b, new (_("Video"), "-"));
-        Add(b, new (_("Video"), _("Take Screenshot"), "async screenshot", "s"));
-        Add(b, new (_("Video"), _("Take Screenshot without subtitles"), "async screenshot video", "S"));
+        Add(b, new (_("Video"), _("Take Screenshot"), "script-message-to mpvnet modern-tool screenshot", "s"));
+        Add(b, new (_("Video"), _("Take Screenshot without subtitles"), "script-message-to mpvnet modern-tool screenshot-video", "S"));
         Add(b, new (_("Video"), _("Toggle Deinterlace"), "cycle deinterlace", "d"));
         Add(b, new (_("Video"), _("Change Aspect Ratio"), "cycle-values video-aspect-override 16:9 4:3 2.35:1 0 -1", "a"));
         Add(b, new (_("Video"), _("Rotate Video"), "cycle-values video-rotate 90 180 270 0", "Ctrl+r"));
@@ -178,8 +193,8 @@ public static class InputHelp
         Add(b, new (_("Config") + " > " + _("Setup"), _("Register image file associations"), "script-message-to mpvnet reg-file-assoc image"));
         Add(b, new (_("Config") + " > " + _("Setup"), _("Unregister file associations"), "script-message-to mpvnet reg-file-assoc unreg"));
         Add(b, new (_("Config") + " > " + _("Setup"), "-"));
-        Add(b, new (_("Config") + " > " + _("Setup"), _("Add mpv.net to Path environment variable"), "script-message-to mpvnet add-to-path"));
-        Add(b, new (_("Config") + " > " + _("Setup"), _("Remove mpv.net from Path environment variable"), "script-message-to mpvnet remove-from-path"));
+        Add(b, new (_("Config") + " > " + _("Setup"), "将 FrameFlow 加入 Path 环境变量", "script-message-to mpvnet add-to-path"));
+        Add(b, new (_("Config") + " > " + _("Setup"), "从 Path 环境变量移除 FrameFlow", "script-message-to mpvnet remove-from-path"));
 
         Add(b, new (_("Tools"), _("Set/clear A-B loop points"), "ab-loop", "l"));
         Add(b, new (_("Tools"), _("Toggle infinite file looping"), "cycle-values loop-file inf no", "L"));
@@ -190,13 +205,13 @@ public static class InputHelp
         Add(b, new ("", _("Custom")));
 
         Add(b, new (_("Help"), _("Website mpv"), "script-message-to mpvnet shell-execute https://mpv.io", "Ctrl+Home"));
-        Add(b, new (_("Help"), _("Website mpv.net"), "script-message-to mpvnet shell-execute https://github.com/mpvnet-player/mpv.net"));
+        Add(b, new (_("Help"), "FrameFlow 开源声明", "script-message-to mpvnet frameflow-notices"));
         Add(b, new (_("Help"), "-"));
         Add(b, new (_("Help"), _("Manual mpv"), "script-message-to mpvnet shell-execute https://mpv.io/manual/stable", "Ctrl+F1"));
-        Add(b, new (_("Help"), _("Manual mpv.net"), "script-message-to mpvnet shell-execute https://github.com/mpvnet-player/mpv.net/blob/main/docs/manual.md", "Ctrl+F2"));
+        Add(b, new (_("Help"), "FrameFlow 使用说明", "script-message-to mpvnet frameflow-manual", "Ctrl+F2"));
         Add(b, new (_("Help"), "-"));
         Add(b, new (_("Help"), _("awesome-mpv"), "script-message-to mpvnet shell-execute https://github.com/stax76/awesome-mpv", "Ctrl+a"));
-        Add(b, new (_("Help"), _("About mpv.net"), "script-message-to mpvnet show-about"));
+        Add(b, new (_("Help"), "关于 FrameFlow", "script-message-to mpvnet show-about"));
 
         Add(b, new ("", "", "quit", "q", _("Exit")));
         Add(b, new ("", "", "script-message-to mpvnet show-menu", "MBTN_Right", _("Show Menu")));
@@ -383,7 +398,14 @@ public static class InputHelp
                 line = line[..line.IndexOf('#')];
             }
 
-            binding.Command = line.Trim();
+            binding.Command = line.Trim() switch
+            {
+                "screenshot" or "async screenshot" or "screenshot subtitles" or "async screenshot subtitles"
+                    => "script-message-to mpvnet modern-tool screenshot",
+                "screenshot video" or "async screenshot video"
+                    => "script-message-to mpvnet modern-tool screenshot-video",
+                var command => command
+            };
 
             if (binding.Command.ToLower() == "ignore")
                 binding.Command = "";

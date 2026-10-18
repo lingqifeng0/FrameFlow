@@ -1,0 +1,164 @@
+# 配置文件:参数名<TAB>中文名称<TAB>中文说明。技术参数和值保持原样。
+mpvnet:process-instance	打开文件时的进程方式	单进程复用现有窗口；独立进程每次打开新窗口；队列模式把文件加入当前播放列表。按住 Shift 打开也可使用独立进程。
+mpvnet:recent-count	最近文件记录数量	记住的最近文件数量，整数，原默认值为 15。
+mpvnet:media-info	使用 MediaInfo 读取媒体信息	选择是否使用 MediaInfo 库辅助读取媒体信息。
+mpv:image-exts	识别的图片扩展名	用逗号分隔图片扩展名，供封面、目录筛选和自动播放列表使用。
+mpvnet:menu-syntax	右键菜单标记	input.conf 中定义菜单的标记。FrameFlow 默认使用 #menu:，uosc 通常使用 #!。
+mpv:video-sync	音画同步方式	选择以音频时钟或显示刷新率同步视频。显示同步模式可重采样音频或丢弃帧；详细行为见参数文档。
+mpvnet:debug-mode	调试模式	输出用于排查问题的调试信息。仅在需要诊断时启用。
+mpv:vo	视频渲染器	选择视频输出后端。gpu 提供 GPU 渲染、缩放和色彩管理；gpu-next 使用 libplacebo；direct3d 使用 Direct3D 后端。
+mpv:hwdec	硬件解码	优先使用显卡解码。实际支持取决于视频编码和硬件；不支持时回退到软件解码。带 copy 的模式把解码帧复制回系统内存。
+mpv:gpu-api	图形接口	限制渲染使用的图形接口。自动模式选择可用接口；需要固定接口时明确选择 Direct3D 11、OpenGL 或 Vulkan。
+mpv:gpu-context	图形渲染上下文	选择图形接口与 Windows 窗口的连接方式。自动模式通常适用；其他模式的可用性取决于系统、驱动和渲染器。
+mpv:scale	画面放大滤镜	视频放大时使用的重建算法。不同算法在速度、锐度和振铃之间取舍。
+mpv:cscale	色度缩放滤镜	用于插值色度信息。源画面没有色度子采样时，该设置会被忽略。
+mpv:dscale	画面缩小滤镜	视频缩小时使用的滤镜。未单独指定时沿用放大滤镜。
+mpv:correct-downscaling	缩小时调整滤镜范围	缩小画面时扩展卷积滤镜范围，以提高质量，同时增加运算量。
+mpv:sigmoid-upscaling	放大时抑制振铃	放大前使用 S 形色彩变换，减少边缘振铃，同时启用线性缩放。
+mpv:dither-depth	输出抖动位深	选择输出抖动的目标位深。关闭、自动、8 位或 10 位；显示器自身的抖动可能与此设置叠加。
+mpv:deband	去色带	减少渐变色带和量化痕迹，可能轻微模糊细节并增加渲染开销。
+mpv:hdr-compute-peak	计算 HDR 峰值亮度	选择是否分析画面峰值亮度，供 HDR 色调映射使用。
+mpv:allow-delayed-peak-detect	允许延迟峰值检测	允许使用延迟的峰值检测结果以提高吞吐量；场景切换时可能影响亮度稳定性。
+mpv:d3d11va-zero-copy	D3D11 硬件解码零拷贝	尝试直接使用硬件解码纹理，减少复制。支持情况取决于显卡、驱动和渲染路径。
+mpv:background	视频区域背景色	设置视频未覆盖区域的颜色。可使用 #RRGGBB 或带透明度的颜色格式。
+mpv:libplacebo-opts	libplacebo 自定义参数	传给 gpu-next 后端的原始参数，以逗号分隔。可能覆盖下方同名的渲染选项。
+libplacebo:preset	渲染质量预设	默认预设平衡性能与质量；快速预设关闭高级处理；高质量预设使用可用的高质量设置。
+libplacebo:upscaler	放大算法	选择画面放大滤镜。最近邻和双线性较快，复杂重建算法通常需要更多 GPU 运算。
+libplacebo:downscaler	缩小算法	选择画面缩小滤镜。none 沿用放大算法。
+libplacebo:plane_upscaler	色度与透明度放大算法	单独设置色度、透明度等平面的放大滤镜。none 沿用画面放大算法。
+libplacebo:plane_downscaler	色度与透明度缩小算法	单独设置色度、透明度等平面的缩小滤镜。none 沿用画面缩小算法。
+libplacebo:frame_mixer	帧混合算法	用于时间插值和帧混合。关闭时选择离目标时间最近的帧；其他算法按不同权重混合相邻帧。
+libplacebo:antiringing_strength	抗振铃强度	范围 0.0–1.0。0 关闭抗振铃，1 使用最大强度；原默认值为 0。
+libplacebo:deband	启用去色带	使用 libplacebo 去色带处理，减少渐变中的量化痕迹。
+libplacebo:deband_preset	去色带预设	使用指定预设覆盖本组参数；none 保留单独设置。
+libplacebo:deband_iterations	去色带迭代次数	范围 0–16，原默认值为 1。次数增加会提高运算量，超过 4 次通常收益很小。
+libplacebo:deband_threshold	去色带阈值	范围 0.0–1000.0，原默认值为 3.0。值越大处理越强，也越容易损失细节。
+libplacebo:deband_radius	去色带采样半径	范围 0.0–1000.0，原默认值为 16.0。半径随迭代增加；较大值搜索更宽的渐变区域。
+libplacebo:deband_grain	去色带附加噪声	范围 0.0–1000.0，原默认值为 4.0。添加轻微噪声以掩盖剩余量化痕迹。
+libplacebo:sigmoid	启用 S 形曲线处理	启用缩放前后的 S 形曲线变换，以减轻边缘振铃。
+libplacebo:sigmoid_preset	S 形曲线预设	使用预设覆盖本组参数；none 保留单独设置。
+libplacebo:sigmoid_center	S 形曲线中心	范围 0.0–1.0，原默认值为 0.75。设置曲线的中心偏置。
+libplacebo:sigmoid_slope	S 形曲线斜率	范围 1.0–20.0，原默认值为 6.5。设置曲线的陡峭程度。
+libplacebo:color_adjustment	启用色彩调整	启用下方亮度、对比度、饱和度、色相和色温等调整。
+libplacebo:color_adjustment_preset	色彩调整预设	neutral 使用中性预设；none 保留单独设置。
+libplacebo:brightness	亮度偏移	范围 -1.0–1.0，原默认值为 0。0 不改变亮度，1 为纯白，-1 为纯黑。
+libplacebo:contrast	对比度增益	范围 0.0–100.0，原默认值为 1。1 不改变对比度，0 为纯黑。
+libplacebo:saturation	饱和度增益	范围 0.0–100.0，原默认值为 1。1 不改变饱和度，0 为灰度。
+libplacebo:hue	色相偏移	旋转色度分量，单位为弧度；原默认值为 0。
+libplacebo:gamma	伽马调整	范围 0.0–100.0，原默认值为 1。改变观感明暗并保留整体对比度。
+libplacebo:temperature	色温偏移	范围 -1.143–5.286。0 约为 6500 K，-1 约为 3000 K，1 约为 10000 K。
+libplacebo:peak_detect	启用 HDR 峰值检测	分析画面亮度峰值，供色调映射使用。
+libplacebo:peak_detection_preset	峰值检测预设	预设覆盖本组参数；高质量预设还启用帧亮度直方图测量。
+libplacebo:peak_smoothing_period	峰值平滑周期	范围 0.0–1000.0。设置检测结果的平滑系数。
+libplacebo:scene_threshold_low	场景变化低阈值	峰值检测的场景变化低阈值。具体数值含义见对应参数文档。
+libplacebo:scene_threshold_high	场景变化高阈值	峰值检测的场景变化高阈值。具体数值含义见对应参数文档。
+libplacebo:peak_percentile	峰值亮度百分位	范围 0.0–100.0。选择亮度直方图中的哪个百分位作为场景峰值。
+libplacebo:black_cutoff	暗部截止强度	范围 0.0–100.0。设置暗部截止处理的强度。
+libplacebo:allow_delayed_peak	允许峰值延迟一帧	允许峰值检测结果最多延迟一帧，可提高吞吐量，但场景切换时可能出现一帧亮度闪烁。
+libplacebo:color_map	使用自定义色彩映射	启用本组色彩映射参数。关闭后使用默认参数，仍会执行需要的色彩映射。
+libplacebo:color_map_preset	色彩映射预设	预设覆盖本组参数；高质量预设还启用 HDR 对比度恢复。
+libplacebo:gamut_mapping	色域映射方式	处理超出目标色域的颜色，包括色调映射导致的超色域颜色。
+libplacebo:perceptual_deadzone	感知映射保护区	范围 0.0–1.0，原默认值为 0.30。设置感知映射中的色度保护区域。
+libplacebo:perceptual_strength	感知饱和度映射强度	范围 0.0–1.0，原默认值为 0.80。
+libplacebo:colorimetric_gamma	色度裁剪伽马	范围 0.0–10.0，原默认值为 1.80。用于相对、绝对和压暗等色度裁剪方式。
+libplacebo:softclip_knee	柔和裁剪转折点	范围 0.0–1.0，原默认值为 0.70。用于感知映射和柔和裁剪。
+libplacebo:softclip_desat	柔和裁剪去饱和强度	范围 0.0–1.0，原默认值为 0.35。
+libplacebo:lut3d_size_I	色域查找表亮度维度	范围 0–1024，原默认值为 48。设为 0 使用默认维度大小。
+libplacebo:lut3d_size_C	色域查找表色度维度	范围 0–1024，原默认值为 32。设为 0 使用默认维度大小。
+libplacebo:lut3d_size_h	色域查找表色相维度	范围 0–1024，原默认值为 256。设为 0 使用默认维度大小。
+libplacebo:lut3d_tricubic	三维查找表三次插值	使用更高质量的三次插值，运算较慢；对较小的三维查找表改善更明显。
+libplacebo:gamut_expansion	允许扩展色域	目标色域大于源色域时，允许支持双向映射的算法扩大色域。
+libplacebo:tone_mapping	色调映射算法	选择在不同亮度范围之间映射的算法，同时处理黑点适配。
+libplacebo:knee_adaptation	色调转折点自适应	控制转折点的自适应程度。具体范围和作用见参数文档。
+libplacebo:knee_minimum	色调转折点下限	范围 0.0–0.5，原默认值为 0.1。按 PQ 亮度范围比例限制自适应转折点。
+libplacebo:knee_maximum	色调转折点上限	范围 0.5–1.0，原默认值为 0.8。按 PQ 亮度范围比例限制自适应转折点。
+libplacebo:knee_default	默认色调转折点	范围 0.0–1.0，原默认值为 0.4。源场景缺少平均亮度元数据时使用。
+libplacebo:knee_offset	BT.2390 转折点偏移	范围 0.5–2.0。仅用于 BT.2390；规范默认值 0.5 与 libplacebo 默认值 1.0 不同。
+libplacebo:slope_tuning	色调曲线斜率调整	调整色调映射曲线斜率，具体作用见参数文档。
+libplacebo:slope_offset	色调曲线斜率偏移	设置色调映射曲线斜率偏移，具体作用见参数文档。
+libplacebo:spline_contrast	样条曲线对比度	调整样条色调映射的对比度，具体作用见参数文档。
+libplacebo:reinhard_contrast	Reinhard 局部对比度	范围 0.0–1.0，原默认值为 0.5。控制显示峰值处的局部对比度系数。
+libplacebo:linear_knee	线性光转折点	范围 0.0–1.0，原默认值为 0.3。用于 mobius、gamma 等在线性光域工作的算法。
+libplacebo:exposure	线性色调映射曝光	范围 0.0–10.0，原默认值为 1。设置 linear、linearlight 等算法的曝光增益。
+libplacebo:inverse_tone_mapping	反向色调映射	算法支持时扩展信号动态范围。实际输出还取决于显示器的 HDR 能力。
+libplacebo:tone_map_metadata	色调映射元数据来源	选择使用哪类亮度元数据，覆盖默认的元数据优先顺序。
+libplacebo:tone_lut_size	色调映射查找表大小	范围 0–4096，原默认值为 256。设为 0 使用默认大小。
+libplacebo:contrast_recovery	HDR 对比度恢复	控制 HDR 色调映射后的局部对比度恢复，具体范围见参数文档。
+libplacebo:contrast_smoothness	对比度恢复平滑度	范围 1.0–32.0，原默认值为 3.5。设置低通核大小，对画面观感影响明显。
+libplacebo:force_tone_mapping_lut	强制使用色调查找表	即使算法有更快的着色器实现也使用完整查找表。主要用于调试。
+libplacebo:visualize_lut	显示查找表可视化	显示色域查找表的调试图形。
+libplacebo:visualize_lut_x0	可视化区域左边界	相对于视频画面的左边界坐标，原默认值为 0。
+libplacebo:visualize_lut_y0	可视化区域上边界	相对于视频画面的上边界坐标，原默认值为 0。
+libplacebo:visualize_lut_x1	可视化区域右边界	相对于视频画面的右边界坐标，原默认值为 1。
+libplacebo:visualize_lut_y1	可视化区域下边界	相对于视频画面的下边界坐标，原默认值为 1。
+libplacebo:visualize_hue	可视化色相旋转	绕亮度轴旋转色域可视化，单位为弧度，原默认值为 0。
+libplacebo:visualize_theta	可视化截面旋转	绕色度轴旋转色域可视化截面，单位为弧度，原默认值为 0。
+libplacebo:show_clipping	高亮亮度裁剪区域	高亮超过源亮度声明范围、在色调映射中被硬裁剪的像素。
+mpv:screenshot-directory	原生截图保存目录	供自定义 mpv 原生截图命令使用。工具栏和默认截图快捷键会弹出预览，由你选择保存位置或复制图片。
+mpv:screenshot-format	原生截图格式	自定义 mpv 原生截图命令使用的 JPEG 或 PNG 格式。截图预览窗口的保存格式由另存为对话框选择。
+mpv:screenshot-tag-colorspace	截图写入色彩空间标记	为支持的截图格式写入对应色彩空间信息。
+mpv:screenshot-high-bit-depth	截图保留高位深	尽量使用与视频接近的位深。16 位 PNG 文件可能明显增大，并包含未使用的透明通道。
+mpv:screenshot-jpeg-source-chroma	JPEG 保留源色度采样	让 JPEG 使用与视频一致的色度子采样；关闭后使用编码器默认值。
+mpv:screenshot-template	截图文件名模板	不包含扩展名的文件名模板，可使用格式占位符。原默认模板 mpv-shot%n 会生成连续编号。
+mpv:screenshot-jpeg-quality	JPEG 截图质量	范围 0–100，原默认值为 90。值越高质量越好，文件通常越大。
+mpv:screenshot-png-compression	PNG 压缩级别	范围 0–9，原默认值为 7。提高压缩可减小文件，但写入耗时增加，可能影响播放。
+mpv:screenshot-png-filter	PNG 压缩滤波器	范围 0–5：无、sub、up、average、Paeth、混合。原默认值为 5，通常有较好的压缩率。
+mpv:video-exts	识别的视频扩展名	用逗号分隔视频扩展名，供目录筛选和自动播放列表使用。
+mpv:volume	启动音量	0 静音，100 不降低或放大音量。负值按 0 处理；原默认值为 100。
+mpvnet:remember-volume	退出后记住音量	退出时保存音量和静音状态，启动时恢复。
+mpv:alang	优先音轨语言	按优先顺序填写语言代码列表。不同封装格式采用的语言代码可能不同。
+mpv:audio-file-auto	自动加载外部音频	按同名、模糊匹配或全部文件加载外部音频；关闭时不自动加载。
+mpv:audio-device	音频输出设备	设备标识由输出后端和设备名组成。auto 自动选择默认设备；具体设备标识可从 mpv 设备列表查询。
+mpvnet:remember-audio-device	记住音频输出设备	保存并恢复已选择的音频输出设备。
+mpv:audio-exts	识别的音频扩展名	用逗号分隔音频扩展名，供外部音频匹配、目录筛选和自动播放列表使用。
+mpv:slang	优先字幕语言	按优先顺序填写字幕语言代码列表。不同封装格式采用的代码可能不同。
+mpv:sub-auto	自动加载外部字幕	按同名、模糊匹配或全部文件加载字幕；原默认值为同名匹配。
+mpv:sub-font	字幕字体	没有自带字体样式的字幕使用此字体；原默认值为 sans-serif。
+mpv:sub-font-size	字幕字号	按视频窗口高度 720 计算的缩放像素，随窗口高度调整；原默认值为 55。
+mpv:sub-color	字幕文字颜色	设置无样式文本字幕的颜色。支持的颜色格式和示例见参数文档。
+mpv:sub-border-color	字幕描边颜色	字幕轮廓颜色。设置非透明字幕背景时，这个参数可能被忽略。
+mpv:sub-back-color	字幕背景颜色	设置字幕文字背景色，透明度包含在颜色值中。
+mpv:title	窗口标题模板	可使用属性占位符设置窗口标题。复杂或频繁变化的属性可能增加 CPU 开销。
+mpv:fullscreen	启动时全屏	启动播放器时进入全屏。画面双击动作请在常规分类中设置。
+mpv:border	底层窗口边框	控制底层窗口装饰。当前播放器主界面使用自绘标题栏和无边框布局。
+mpv:title-bar	底层窗口标题栏	控制底层标题栏。当前主界面使用统一的自绘标题栏。
+mpv:screen	播放显示器编号	多显示器环境中选择显示视频的屏幕，编号范围 0–32。
+mpv:taskbar-progress	任务栏显示播放进度	在 Windows 任务栏按钮上显示播放进度。
+mpv:osd-playing-msg	开始播放时的画面提示	播放开始时显示提示文字，可包含属性占位符，例如 ${filename}。
+mpv:osd-font-size	画面提示字号	按缩放像素计算的提示字号，缩放方式与字幕字号类似；原默认值为 55。
+mpv:osd-duration	画面提示持续时间	提示显示时长，单位为毫秒；原默认值为 1000。
+mpv:osd-scale-by-window	提示文字随窗口缩放	启用时提示大小随窗口变化；关闭时相关字号直接使用实际像素。
+mpv:autofit	初始窗口高度比例	相对于可用屏幕高度的百分比，原默认值为 60。
+mpv:autofit-smaller	最小自动适配高度	相对于可用屏幕高度的百分比，原默认值为 10。
+mpv:autofit-larger	最大自动适配高度	相对于可用屏幕高度的百分比，原默认值为 80。
+mpvnet:autofit-image	图片初始窗口高度	图片播放时的初始屏幕高度百分比，原默认值为 80。
+mpvnet:autofit-audio	音频初始窗口高度	仅播放音频时的初始屏幕高度百分比，原默认值为 70。
+mpv:geometry	初始窗口位置	用 x:y 表示位置百分比，50:50 居中；0 和 100 分别靠对应方向的屏幕边缘。
+mpvnet:start-size	窗口尺寸记忆方式	选择记住当前会话或每次启动的窗口尺寸，也可按视频分辨率设置。当前主界面同时保留自己的普通窗口尺寸。
+mpv:keepaspect-window	锁定窗口宽高比	控制底层窗口是否保持视频宽高比。当前主界面允许自由调整窗口比例。
+mpvnet:minimum-aspect-ratio	窗口最小宽高比	限制窗口最小宽高比，可用于保证控制栏有足够宽度。
+mpvnet:minimum-aspect-ratio-audio	音频窗口最小宽高比	仅播放音频时使用的最小窗口宽高比。
+mpvnet:remember-window-position	退出后记住窗口位置	退出时保存窗口在屏幕上的位置。
+mpv:snap-window	窗口吸附屏幕边缘	移动窗口时吸附到屏幕边缘。
+mpv:window-maximized	启动时最大化	启动时使用最大化窗口。
+mpv:keep-open	播放结束后的行为	继续下一项并保留最后一帧、结束后关闭，或始终留在当前文件；是否退出还受空闲模式影响。
+mpv:keep-open-pause	文件结束时暂停	保持窗口打开时，选择在文件结束处暂停；关闭时到结尾停止，向后跳转后可继续播放。
+mpv:idle	无文件时保持窗口	启用时没有文件也保留窗口；关闭时配合播放结束行为退出；once 仅在首次播放前允许空闲。
+mpv:loop-file	当前文件循环次数	填写次数、inf 或 no。inf 无限循环，no 正常播放；只循环当前文件。
+mpv:save-position-on-quit	mpv 退出时保存断点	保存 mpv 底层断点，下次打开恢复。当前播放器自己的断点开关在常规分类中。
+mpv:watch-later-options	底层断点保存的参数	用逗号分隔需要随底层断点保存和恢复的参数名。
+mpv:hr-seek	精确跳转方式	精确跳转需要从前一个关键帧解码到目标位置，可能稍慢。选择始终精确、关闭或仅绝对位置精确。
+mpv:track-auto-selection	自动选择媒体轨道	按音轨、字幕语言等偏好选择轨道。关闭时默认不选择轨道，可供复杂滤镜场景手动控制。
+mpv:loop-playlist	播放列表循环次数	填写次数、inf、force 或 no。1 或 no 播放一遍，inf 无限循环；force 还会重试已失败的条目。
+mpv:autocreate-playlist	同目录自动播放列表	关闭时只加载当前文件；筛选模式加入目录中匹配类型的文件；同类型模式只加入与当前文件相同类别的文件。
+mpvnet:auto-load-folder	旧版自动加载目录	旧版目录自动加载开关，已弃用；优先使用同目录自动播放列表参数。
+mpv:reset-on-next-file	切换文件时重置参数	填写参数名列表。播放新文件时，这些参数恢复到启动时的值，其余参数继续沿用。
+mpv:input-ar-delay	按键连发延迟	按住按键多久后开始连发，单位为毫秒；0 关闭连发。
+mpv:input-ar-rate	按键连发频率	按键连发时每秒生成的按键次数。
+mpv:input-ipc-server	外部控制管道	Windows 命名管道路径，例如 \\.\pipe\FrameFlow。修改后需重新启动外部控制服务或播放器。
+mpvnet:language	内置界面语言	选择其他内置对话框的语言，修改后重启生效。当前统一设置与主界面使用中文。
+mpvnet:dark-mode	其他对话框深色模式	设置其他内置对话框的主题模式，修改后重启生效。当前主界面与设置保持统一深色样式。
+mpvnet:dark-theme	其他对话框深色主题	其他内置对话框使用的深色主题名称，原默认值为 dark，修改后重启生效。
+mpvnet:light-theme	其他对话框浅色主题	其他内置对话框使用的浅色主题名称，原默认值为 light，修改后重启生效。
+mpv:cache	网络缓存	选择是否使用网络缓存设置；自动模式按媒体来源决定。
+mpv:demuxer-max-bytes	预读取缓存上限	限制解复用器向前缓存的数据量。可填写 128MiB 等数值，支持 KiB、MiB 等单位。

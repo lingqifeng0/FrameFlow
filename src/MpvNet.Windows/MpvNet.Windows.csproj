@@ -6,13 +6,17 @@
 		<RootNamespace>MpvNet.Windows</RootNamespace>
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 		<PublishSingleFile>true</PublishSingleFile>
-		<AssemblyName>mpvnet</AssemblyName>
+		<AssemblyName>FrameFlow</AssemblyName>
+		<AssemblyTitle>FrameFlow</AssemblyTitle>
+		<Description>FrameFlow 视频播放器</Description>
 		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationIcon>mpv-icon.ico</ApplicationIcon>
-		<FileVersion>7.1.2.0</FileVersion>
-		<AssemblyVersion>7.1.2.0</AssemblyVersion>
-		<InformationalVersion>7.1.2.0</InformationalVersion>
+		<ModernVersion>27</ModernVersion>
+		<FileVersion>7.1.2.$([MSBuild]::Add(1000, $(ModernVersion)))</FileVersion>
+		<AssemblyVersion>7.1.2.$([MSBuild]::Add(1000, $(ModernVersion)))</AssemblyVersion>
+		<InformationalVersion>FrameFlow.V$(ModernVersion)</InformationalVersion>
+		<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -24,6 +28,8 @@
 
 	<ItemGroup>
 		<Content Include="mpv-icon.ico" />
+		<EmbeddedResource Include="Resources\editor_conf_zh.tsv" />
+		<AssemblyMetadata Include="ModernVersion" Value="$(ModernVersion)" />
 	</ItemGroup>
 
 	<ItemGroup>

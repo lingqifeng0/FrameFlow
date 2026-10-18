@@ -1,9 +1,11 @@
 ﻿
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -15,58 +17,106 @@ using MpvNet.Help;
 using MpvNet.Windows.UI;
 using MpvNet.Windows.WPF.Controls;
 using MpvNet.Windows.WPF.ViewModels;
+using MpvNet.Windows.Modern;
+using MpvNet.Windows.WinForms;
 
 namespace MpvNet.Windows.WPF;
 
 public partial class ConfWindow : Window, INotifyPropertyChanged
 {
+    public static string VersionText => ModernVersion.Label;
+    readonly long _openedAt = Stopwatch.GetTimestamp();
     List<Setting> _settings = Conf.LoadConf(Properties.Resources.editor_conf.TrimEnd());
+    readonly Dictionary<Setting, FrameworkElement> _settingControls = new();
+    readonly LinkedList<Setting> _nativeControlOrder = new();
+    const int NativeControlCacheLimit = 32;
+    int _createdNativeControls;
+    readonly Dictionary<Setting, int> _settingOrder = new();
+    ModernPreferencesControl? _preferencesControl;
+    ModernPreferencesControl? _inputPreferencesControl;
+    ShortcutSettingsControl? _shortcutControl;
+    bool _settingsReady;
     List<ConfItem> _confItems = new List<ConfItem>();
     string _initialContent;
     string _themeConf = GetThemeConf();
     string? _searchText;
     List<NodeViewModel>? _nodes;
     bool _shown;
+    double _firstRenderMilliseconds;
+    string _selectedCategory = "常规";
+    readonly List<Setting> _searchResults = new();
+    int _searchResultIndex;
+    bool _selectingNode;
     int _useSpace;
     int _useNoSpace;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    public ConfWindow()
+    public ConfWindow(string? initialSearch = null)
     {
         InitializeComponent();
+        ModernSettingsTheme.Apply(this);
         DataContext = this;
+        ChineseSettings.Apply(_settings);
+        SearchControl.SearchTextBox.Height = 36;
+        SearchControl.SearchTextBox.FontSize = 12;
+        SearchControl.SearchTextBox.Padding = new Thickness(7, 6, 24, 6);
+        SearchControl.SearchTextBox.PreviewKeyDown += Search_KeyDown;
+        if (MainForm.Instance != null) {
+            _preferencesControl = new ModernPreferencesControl(MainForm.Instance) { Visibility = Visibility.Collapsed };
+            MainStackPanel.Children.Add(_preferencesControl);
+            _shortcutControl = new ShortcutSettingsControl(MainForm.Instance) { Visibility = Visibility.Collapsed };
+            _inputPreferencesControl = new ModernPreferencesControl(MainForm.Instance, true) { Visibility = Visibility.Collapsed };
+            MainStackPanel.Children.Add(_inputPreferencesControl);
+            MainStackPanel.Children.Add(_shortcutControl);
+            FilterStrings.Add("快捷键与鼠标");
+        }
         LoadConf(Player.ConfPath);
         LoadConf(App.ConfPath);
         LoadLibplaceboConf();
         LoadSettings();
         _initialContent = GetCompareString();
+        _settingsReady = true;
 
-        if (string.IsNullOrEmpty(App.Settings.ConfigEditorSearch))
-            SearchText = "General:";
-        else
-            SearchText = App.Settings.ConfigEditorSearch;
-
-        foreach (var node in Nodes)
-            SelectNodeFromSearchText(node);
-
-        foreach (var node in Nodes)
-            node.IsExpanded = true;
+        // A normal open always starts in General with all branches collapsed.
+        NavigateTo(initialSearch ?? "常规:");
     }
 
     public ObservableCollection<string> FilterStrings { get; } = new();
 
-    public Theme? Theme => Theme.Current;
+    public Theme? Theme => ModernSettingsTheme.Current;
 
     public string SearchText
     {
         get => _searchText ?? "";
         set
         {
-            _searchText = value;
+            _searchText = value ?? "";
             SearchTextChanged();
             OnPropertyChanged();
         }
+    }
+
+    public void NavigateTo(string target)
+    {
+        target = ChineseSettings.Search(target);
+        if (target.EndsWith(':') && FilterStrings.Contains(target[..^1])) {
+            _selectedCategory = target[..^1];
+            SearchText = "";
+            SelectCategoryNode(_selectedCategory);
+        } else SearchText = target;
+    }
+
+    public void ResetNavigation()
+    {
+        foreach (var node in Nodes) CollapseNode(node);
+        NavigateTo("常规:");
+    }
+
+    static void CollapseNode(NodeViewModel node)
+    {
+        foreach (var child in node.Children) CollapseNode(child);
+        node.IsExpanded = false;
     }
 
     public List<NodeViewModel> Nodes
@@ -79,6 +129,7 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
 
                 foreach (Setting setting in _settings)
                     AddNode(rootNode.Children, setting.Directory!);
+                AddNode(rootNode.Children, "快捷键与鼠标");
 
                 _nodes = new NodeViewModel(rootNode).Children;
             }
@@ -150,19 +201,67 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
                 }
             }
 
-            switch (setting)
-            {
-                case StringSetting s:
-                    MainStackPanel.Children.Add(new StringSettingControl(s) { Visibility = Visibility.Collapsed });
-                    break;
-                case OptionSetting s:
-                    if (s.Options.Count > 3)
-                        MainStackPanel.Children.Add(new ComboBoxSettingControl(s) { Visibility = Visibility.Collapsed });
-                    else
-                        MainStackPanel.Children.Add(new OptionSettingControl(s) { Visibility = Visibility.Collapsed });
-                    break;
-            }
+            _settingOrder.Add(setting, _settingOrder.Count);
         }
+    }
+
+    FrameworkElement GetSettingControl(Setting setting)
+    {
+        if (_settingControls.TryGetValue(setting, out var existing)) {
+            _nativeControlOrder.Remove(setting); _nativeControlOrder.AddLast(setting); return existing;
+        }
+        FrameworkElement control = setting switch {
+            StringSetting text => new StringSettingControl(text),
+            OptionSetting option when option.Options.Count > 3 => new ComboBoxSettingControl(option),
+            OptionSetting option => new OptionSettingControl(option),
+            _ => throw new InvalidOperationException("不支持的设置类型")
+        };
+        control.Visibility = Visibility.Collapsed;
+        int index = (_preferencesControl == null ? 0 : 3) + _settingControls.Keys.Count(item => _settingOrder[item] < _settingOrder[setting]);
+        MainStackPanel.Children.Insert(index, control);
+        _settingControls.Add(setting, control);
+        _nativeControlOrder.AddLast(setting); _createdNativeControls++;
+        return control;
+    }
+
+    void TrimNativeControlCache()
+    {
+        var node=_nativeControlOrder.First;
+        while(_settingControls.Count>NativeControlCacheLimit && node!=null) {
+            var next=node.Next; var control=_settingControls[node.Value];
+            // Active controls may exceed the limit in a large category. Only
+            // hidden views are discarded; the settings models retain edits.
+            if(control.Visibility!=Visibility.Visible) {
+                MainStackPanel.Children.Remove(control); control.DataContext=null;
+                _settingControls.Remove(node.Value); _nativeControlOrder.Remove(node);
+            }
+            node=next;
+        }
+    }
+
+    void ReleaseSettingsViews()
+    {
+        foreach(var control in _settingControls.Values) control.DataContext=null;
+        MainStackPanel.Children.Clear(); _settingControls.Clear(); _nativeControlOrder.Clear();
+        _preferencesControl=null; _inputPreferencesControl=null; _shortcutControl=null;
+        DataContext=null;
+    }
+
+    void PublishSettingsState(bool visible = true)
+    {
+        if (Player.Handle == IntPtr.Zero) return;
+        Player.SetPropertyString("user-data/modern/settings", JsonSerializer.Serialize(new {
+            visible, ready = _shown && visible, search = SearchText,
+            createdControls = _settingControls.Count, totalSettings = _settings.Count,
+            nativeControlCacheLimit = NativeControlCacheLimit, createdNativeControls = _createdNativeControls,
+            openMilliseconds = _firstRenderMilliseconds, category = _selectedCategory,
+            results = new { count = _searchResults.Count, index = _searchResults.Count == 0 ? 0 : _searchResultIndex + 1,
+                current = _searchResults.ElementAtOrDefault(_searchResultIndex)?.Name,
+                matches = _searchResults.Select(setting => new { name = setting.Name, title = setting.DisplayTitle, category = setting.Directory }) },
+            categories = Nodes.Select(node => new { name = node.Name, expanded = node.IsExpanded, selected = node.IsSelected }),
+            visibleSettings = _settings.Where(setting => _settingControls.TryGetValue(setting, out var control) && control.Visibility == Visibility.Visible)
+                .Select(setting => new { name = setting.Name, title = setting.DisplayTitle, value = setting.Value })
+        }));
     }
 
     static string GetThemeConf() => Theme.DarkMode + App.DarkTheme + App.LightTheme;
@@ -173,6 +272,11 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
     {
         if (!File.Exists(file))
             return;
+
+        // Resource schemas keep their historical identifier; the public file
+        // name changed. Use the same logical kind for values and comments.
+        string configKind = Path.GetFileNameWithoutExtension(file);
+        if (configKind.Equals("frameflow", StringComparison.OrdinalIgnoreCase)) configKind = "mpvnet";
 
         string comment = "";
         string section = "";
@@ -194,7 +298,7 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
             {
                 if (!isSectionItem && comment != "" && comment != "\r\n")
                     _confItems.Add(new ConfItem() {
-                        Comment = comment, File = Path.GetFileNameWithoutExtension(file)});
+                        Comment = comment, File = configKind});
 
                 section = line.Substring(0, line.IndexOf("]") + 1);
                 comment = "";
@@ -219,7 +323,7 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
                     _useNoSpace += 1;
 
                 ConfItem item = new();
-                item.File = Path.GetFileNameWithoutExtension(file);
+                item.File = configKind;
                 item.IsSectionItem = isSectionItem;
                 item.Comment = comment;
                 comment = "";
@@ -253,6 +357,10 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
                 _confItems.Add(item);
             }
         }
+        // Retain comments after the last option, including those at the end of
+        // a named profile. They must survive edits in any settings category.
+        if (comment.Length > 0)
+            _confItems.Add(new ConfItem { File = configKind, Comment = comment, IsSectionItem = isSectionItem });
     }
 
     string GetKeyValueContent(string filename)
@@ -380,6 +488,7 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
             if (item.Comment != "")
                 sb.Append(item.Comment);
 
+            if (item.Name == "") continue;
             sb.Append(item.Name + equalString + EscapeValue(item.Value));
 
             if (item.LineComment != "")
@@ -394,31 +503,78 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
 
     void SearchTextChanged()
     {
-        string activeFilter = "";
-
-        foreach (string i in FilterStrings)
-            if (SearchText == i + ":")
-                activeFilter = i;
-
-        if (activeFilter == "")
-        {
-            foreach (UIElement i in MainStackPanel.Children)
-                if ((i as ISettingControl)!.Contains(SearchText) && SearchText.Length > 1)
-                    i.Visibility = Visibility.Visible;
-                else
-                    i.Visibility = Visibility.Collapsed;
-
-            foreach (var node in Nodes)
-                UnselectNode(node);
+        if (!_settingsReady) return;
+        _searchResults.Clear();
+        _searchResultIndex = 0;
+        string query = SearchText.Trim();
+        if (query.Length > 0) {
+            var candidates = (_preferencesControl?.SearchableSettings ?? []).Concat(_inputPreferencesControl?.SearchableSettings ?? [])
+                .Concat(_shortcutControl?.SearchableSettings ?? []).Concat(_settings);
+            _searchResults.AddRange(candidates.Where(setting => SettingSearch.Matches(setting, query))
+                .OrderByDescending(setting => SettingSearch.Rank(setting, query)));
         }
-        else
-            foreach (UIElement i in MainStackPanel.Children)
-                if ((i as ISettingControl)!.Setting.Directory == activeFilter)
-                    i.Visibility = Visibility.Visible;
-                else
-                    i.Visibility = Visibility.Collapsed;
+        ShowSearchResult();
+    }
 
+    void ShowSearchResult()
+    {
+        if (_inputPreferencesControl != null) _inputPreferencesControl.Visibility = Visibility.Collapsed;
+        if (_shortcutControl != null) _shortcutControl.Visibility = Visibility.Collapsed;
+        foreach (var control in _settingControls.Values) control.Visibility = Visibility.Collapsed;
+        if (_preferencesControl != null) {
+            _preferencesControl.Visibility = Visibility.Collapsed;
+        }
+        bool searching = SearchText.Trim().Length > 0;
+        SearchResultsBar.Visibility = searching ? Visibility.Visible : Visibility.Collapsed;
+        SearchEmptyMessage.Visibility = searching && _searchResults.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        PreviousResultButton.IsEnabled = NextResultButton.IsEnabled = _searchResults.Count > 1;
+        SearchResultCount.Text = _searchResults.Count == 0 ? "0 个匹配项" : $"第 {_searchResultIndex + 1} / {_searchResults.Count} 个匹配项";
+        SearchResultLocation.Text = "搜索范围：全部设置";
+        if (searching) {
+            if (_searchResults.Count > 0) {
+                var setting = _searchResults[_searchResultIndex];
+                _selectedCategory = setting.Directory ?? "常规";
+                SearchResultLocation.Text = _selectedCategory.Replace("/", " › ") + " › " + setting.DisplayTitle;
+                if (_preferencesControl?.SearchableSettings.Contains(setting) == true) {
+                    _preferencesControl.ShowOnly(setting);
+                    _preferencesControl.Visibility = Visibility.Visible;
+                } else if (_inputPreferencesControl?.SearchableSettings.Contains(setting) == true) {
+                    _inputPreferencesControl.ShowOnly(setting); _inputPreferencesControl.Visibility = Visibility.Visible;
+                } else if (_shortcutControl?.SearchableSettings.Contains(setting) == true) {
+                    _shortcutControl.ShowOnly(setting); _shortcutControl.Visibility = Visibility.Visible;
+                } else GetSettingControl(setting).Visibility = Visibility.Visible;
+                SelectCategoryNode(_selectedCategory);
+            }
+        } else {
+            if (_preferencesControl != null && _selectedCategory == "常规") { _preferencesControl.ShowOnly(null); _preferencesControl.Visibility = Visibility.Visible; }
+            if (_selectedCategory == "快捷键与鼠标") {
+                if (_shortcutControl != null) { _shortcutControl.ShowOnly(null); _shortcutControl.Visibility = Visibility.Visible; }
+                if (_inputPreferencesControl != null) { _inputPreferencesControl.ShowOnly(null); _inputPreferencesControl.Visibility = Visibility.Visible; }
+            }
+            foreach (var setting in _settings.Where(setting => setting.Directory == _selectedCategory))
+                GetSettingControl(setting).Visibility = Visibility.Visible;
+        }
+        TrimNativeControlCache();
         MainScrollViewer.ScrollToTop();
+        if (_shown) PublishSettingsState();
+    }
+
+    void MoveSearchResult(int delta)
+    {
+        if (_searchResults.Count < 2) return;
+        _searchResultIndex = (_searchResultIndex + delta + _searchResults.Count) % _searchResults.Count;
+        ShowSearchResult();
+    }
+
+    void PreviousResult_Click(object sender, RoutedEventArgs e) => MoveSearchResult(-1);
+    void NextResult_Click(object sender, RoutedEventArgs e) => MoveSearchResult(1);
+
+    void Search_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is Key.Enter or Key.F3 && SearchText.Trim().Length > 0) {
+            MoveSearchResult((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? -1 : 1);
+            e.Handled = true;
+        }
     }
     
     void ConfWindow1_Loaded(object sender, RoutedEventArgs e)
@@ -433,6 +589,8 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+        try {
+        PublishSettingsState(false);
         App.Settings.ConfigEditorSearch = SearchText;
 
         if (_initialContent == GetCompareString())
@@ -468,17 +626,23 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
         Theme.UpdateWpfColors();
 
         if (_themeConf != GetThemeConf())
-            MessageBox.Show("Changed theme settings require mpv.net being restarted.", "Info");
+            MessageBox.Show("主题选项已保存，重新启动播放器后生效。", "设置已保存");
+        } finally { ReleaseSettingsViews(); }
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
         base.OnKeyDown(e);
         
-        if (e.Key == Key.Escape)
-            Close();
-
-        if (e.Key == Key.F3 || e.Key == Key.F6 || (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control))
+        if (e.Key == Key.Escape) {
+            if (SearchText.Length > 0) SearchText = "";
+            else Close();
+            e.Handled = true;
+        }
+        if (e.Key == Key.F3 && SearchText.Trim().Length > 0) {
+            MoveSearchResult((Keyboard.Modifiers & ModifierKeys.Shift) != 0 ? -1 : 1);
+            e.Handled = true;
+        } else if (e.Key == Key.F3 || (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control))
         {
             Keyboard.Focus(SearchControl.SearchTextBox);
             SearchControl.SearchTextBox.SelectAll();
@@ -496,6 +660,8 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
             return;
 
         _shown = true;
+        _firstRenderMilliseconds = Math.Round(Stopwatch.GetElapsedTime(_openedAt).TotalMilliseconds, 1);
+        PublishSettingsState();
 
         Application.Current.Dispatcher.BeginInvoke(() => {
             SearchControl.SearchTextBox.SelectAll();
@@ -505,28 +671,55 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
 
     void TreeView_SelectedItemChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
     {
-        var node = TreeView.SelectedItem as NodeViewModel;
+        if (!_selectingNode && TreeView.SelectedItem is NodeViewModel node && _settingsReady && node.Path != _selectedCategory)
+            NavigateTo(node.Path + ":");
+    }
+    void Done_Click(object sender, RoutedEventArgs e) => Close();
 
-        if (node == null)
-            return;
-
-        Application.Current.Dispatcher.BeginInvoke(() => {
-            SearchText = node!.Path + ":";
-        },
-        DispatcherPriority.Background);
+    void RestoreAllDefaults_Click(object sender, RoutedEventArgs e)
+    {
+        if (MainForm.Instance == null) return;
+        try {
+            string backup = MainForm.Instance.RestoreAllPlayerDefaults();
+            MainStackPanel.Children.Clear(); _settingControls.Clear(); _nativeControlOrder.Clear(); _settingOrder.Clear(); _confItems.Clear(); FilterStrings.Clear();
+            _settings = Conf.LoadConf(Properties.Resources.editor_conf.TrimEnd()); ChineseSettings.Apply(_settings);
+            _preferencesControl = new ModernPreferencesControl(MainForm.Instance) { Visibility = Visibility.Collapsed };
+            _shortcutControl = new ShortcutSettingsControl(MainForm.Instance) { Visibility = Visibility.Collapsed };
+            _inputPreferencesControl = new ModernPreferencesControl(MainForm.Instance, true) { Visibility = Visibility.Collapsed };
+            MainStackPanel.Children.Add(_preferencesControl); MainStackPanel.Children.Add(_inputPreferencesControl); MainStackPanel.Children.Add(_shortcutControl);
+            LoadConf(Player.ConfPath); LoadConf(App.ConfPath); LoadLibplaceboConf(); LoadSettings();
+            FilterStrings.Add("快捷键与鼠标"); _nodes = null; OnPropertyChanged(nameof(Nodes));
+            _initialContent = GetCompareString(); _themeConf = GetThemeConf(); NavigateTo("常规:");
+            DefaultsStatus.Text = "已恢复全部设置；断点和书签保留。底层参数重启后生效。";
+            DefaultsStatus.ToolTip = "原配置备份：" + backup;
+        } catch (Exception error) { DefaultsStatus.Text = "恢复未完成：" + error.Message; }
     }
 
-    void SelectNodeFromSearchText(NodeViewModel node)
+    void TreeView_CategoryClick(object sender, MouseButtonEventArgs e)
     {
-        if (node.Path + ":" == SearchText)
-        {
-            node.IsSelected = true;
-            node.IsExpanded = true;
-            return;
-        }
+        // Clicking the already highlighted category also exits search. The
+        // expand/collapse arrow remains independent from category navigation.
+        if (e.OriginalSource is TextBlock { DataContext: NodeViewModel node }) NavigateTo(node.Path + ":");
+    }
 
-        foreach (var it in node.Children)
-            SelectNodeFromSearchText(it);
+    void SelectCategoryNode(string category)
+    {
+        _selectingNode = true;
+        try {
+            foreach (var node in Nodes) {
+                UnselectNode(node);
+                Select(node);
+            }
+        } finally { _selectingNode = false; }
+
+        void Select(NodeViewModel node)
+        {
+            if (node.Path == category) {
+                if (node.Parent != null) node.Parent.IsExpanded = true;
+                node.IsSelected = true;
+            }
+            foreach (var child in node.Children) Select(child);
+        }
     }
 
     void UnselectNode(NodeViewModel node)
@@ -538,7 +731,7 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
             UnselectNode(it);
     }
 
-    [RelayCommand] void ShowMpvNetSpecificSettings() => SearchText = "mpv.net";
+    [RelayCommand] void ShowMpvNetSpecificSettings() => SearchText = "FrameFlow";
 
     [RelayCommand] void PreviewMpvConfFile() => Msg.ShowInfo(GetContent("mpv"));
     
@@ -546,5 +739,5 @@ public partial class ConfWindow : Window, INotifyPropertyChanged
 
     [RelayCommand] void ShowMpvManual() => ProcessHelp.ShellExecute("https://mpv.io/manual/master/");
     
-    [RelayCommand] void ShowMpvNetManual() => ProcessHelp.ShellExecute("https://github.com/mpvnet-player/mpv.net/blob/main/docs/manual.md");
+    [RelayCommand] void ShowMpvNetManual() => ProcessHelp.ShellExecute(Path.Combine(Folder.Startup, "使用说明.md"));
 }

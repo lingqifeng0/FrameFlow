@@ -1,0 +1,23 @@
+{
+  "previewWindowWidth": 1280,
+  "toolbarCapacity": 16,
+  "occupiedCount": 6,
+  "remainingCount": 10,
+  "occupiedSlots": [
+    "frame-back",
+    "frame-forward",
+    "screenshot",
+    "bookmark",
+    "ab-loop",
+    "timestamp"
+  ],
+  "customAreaWidth": 758.0,
+  "slotWidth": 44,
+  "groupGap": 14,
+  "widthAtCapacity": 718,
+  "widthWithOneExtra": 762,
+  "emptySlotsPainted": false,
+  "separatorsBetweenOccupiedButtonsOnly": true,
+  "fullCapacityRule": "Remove an occupied custom button before adding a new one.",
+  "narrowWindowRule": "Keep the 16-slot configuration and put temporarily hidden buttons in More."
+}

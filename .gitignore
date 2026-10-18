@@ -301,3 +301,16 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+# Local build toolchain and generated portable distribution
+.tools/
+dist/
+test-results/
+__pycache__/
+/PPT转DOCX/
+
+# Independent utilities share this local workspace but are not FrameFlow source.
+/tools/
+/tests/VideoCut.Tests/
+/scripts/build-cutroom.ps1
+/docs/cutroom-audit-1.0.md

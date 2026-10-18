@@ -7,6 +7,7 @@ using MpvNet.Help;
 using MpvNet.Windows.UI;
 using MpvNet.Windows.Help;
 using MpvNet.Windows.WPF;
+using MpvNet.Windows.Modern;
 
 namespace MpvNet.Windows;
 
@@ -15,6 +16,16 @@ static class Program
     [STAThread]
     static void Main()
     {
+        string[] workerArgs = Environment.GetCommandLineArgs();
+        if (workerArgs.Length >= 3 && workerArgs[1] == "--restart-player" && int.TryParse(workerArgs[2], out int parentPid))
+        {
+            try { if (!Process.GetProcessById(parentPid).WaitForExit(15000)) return; }
+            catch (ArgumentException) { }
+            var restart = new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true };
+            if (workerArgs.Length > 3) restart.ArgumentList.Add(workerArgs[3]);
+            Process.Start(restart);
+            return;
+        }
         try
         {
             RegistryHelp.ProductName = AppInfo.Product;
@@ -39,7 +50,7 @@ static class Program
 
             App.Init();
             Theme.Init();
-            Mutex mutex = new Mutex(true, StringHelp.GetMD5Hash(App.ConfPath), out bool isFirst);
+            using Mutex mutex = new Mutex(true, InstanceRouting.Initialize(Environment.ProcessPath!, App.ConfPath), out bool isFirst);
 
             if (Control.ModifierKeys == Keys.Shift ||
                 App.CommandLine.Contains("--process-instance=multi") ||
@@ -50,50 +61,17 @@ static class Program
 
             if ((App.ProcessInstance == "single" || App.ProcessInstance == "queue") && !isFirst)
             {
-                List<string> args2 = new List<string> { App.ProcessInstance };
-
-                foreach (string arg in args)
+                var request = ForwardedOpenRequest.Parse(InstanceRouting.Identity, App.ProcessInstance, args);
+                for (int i = 0; i < 30; i++)
                 {
-                    if (!arg.StartsWith("--") && (arg == "-" || arg.Contains("://") ||
-                        arg.Contains(":\\") || arg.StartsWith("\\\\")))
-
-                        args2.Add(arg);
-                    else if (arg == "--queue")
-                        args2[0] = "queue";
-                    else if (arg.StartsWith("--command="))
-                    {
-                        args2[0] = "command";
-                        args2.Add(arg[10..]);
+                    if (InstanceRouting.Forward(request)) {
+                        if (App.IsTerminalAttached) WinApi.FreeConsole();
+                        return;
                     }
-                }
-
-                Process[] procs = Process.GetProcessesByName("mpvnet");
-
-                for (int i = 0; i < 20; i++)
-                {
-                    foreach (Process proc in procs)
-                    {
-                        if (proc.MainWindowHandle != IntPtr.Zero)
-                        {
-                            WinApi.AllowSetForegroundWindow(proc.Id);
-                            var data = new WinApi.CopyDataStruct();
-                            data.lpData = string.Join("\n", args2.ToArray());
-                            data.cbData = data.lpData.Length * 2 + 1;
-                            WinApi.SendMessage(proc.MainWindowHandle, 0x004A /*WM_COPYDATA*/, IntPtr.Zero, ref data);
-                            mutex.Dispose();
-
-                            if (App.IsTerminalAttached)
-                                WinApi.FreeConsole();
-
-                            return;
-                        }
-                    }
-
                     Thread.Sleep(50);
                 }
-
-                mutex.Dispose();
-                return;
+                // No matching responsive instance: open here, never send to an
+                // unrelated mpvnet.exe or silently discard the user's request.
             }
 
             if (ProcessCommandLineArguments())
@@ -114,7 +92,7 @@ static class Program
             if (App.IsTerminalAttached)
                 WinApi.FreeConsole();
 
-            mutex.Dispose();
+            InstanceRouting.Unregister();
         }
         catch (Exception ex)
         {

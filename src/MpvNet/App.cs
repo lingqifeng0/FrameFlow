@@ -11,7 +11,7 @@ public class AppClass
 {
     public List<string> TempFiles { get; } = new ();
 
-    public string ConfPath { get => Player.ConfigFolder + "mpvnet.conf"; }
+    public string ConfPath => AppInfo.FrontendConfigPath(Player.ConfigFolder);
     public string ProcessInstance { get; set; } = "single";
     public string DarkMode { get; set; } = "always";
     public string DarkTheme { get; set; } = "dark";
@@ -64,7 +64,7 @@ public class AppClass
 
         if (DebugMode)
         {
-            string filePath = Player.ConfigFolder + "MpvNet-debug.log";
+            string filePath = Player.ConfigFolder + "FrameFlow-debug.log";
 
             if (File.Exists(filePath))
                 File.Delete(filePath);
@@ -77,12 +77,21 @@ public class AppClass
         Player.Initialized += Player_Initialized;
     }
 
-    public static string About => "Copyright (C) 2000-2024 mpv.net/mpv/mplayer\n" +
-        $"{AppInfo.Product} v{AppInfo.Version}" + GetLastWriteTime(Environment.ProcessPath!) + "\n" +
+    public static string About =>
+        $"FrameFlow {AppInfo.ReleaseLabel} · {AppInfo.Version}\n\n" +
+        "基于 mpv.net 修改而来；原项目许可为 GNU GPL v2。\n" +
+        "第三方组件分别保留各自许可证，详见开源声明。\n" +
+        "原作者：stax76 及 mpv.net、mpv、MPlayer 的贡献者。\n" +
+        "Copyright (C) 2000-2024 mpv.net/mpv/mplayer\n" +
+        "FrameFlow 修改版：2026-10-18。此修改版并非原项目官方发行。\n" +
+        "本软件按现状提供，不提供任何担保。\n\n" +
+        "许可全文：License.txt；来源与组件：开源声明.md。\n" +
+        $"本版前端源码：随发布提供的 FrameFlow-{AppInfo.ReleaseLabel}-source.zip。\n" +
+        "原项目：https://github.com/mpvnet-player/mpv.net\n\n" +
         $"{Player.GetPropertyString("mpv-version")}" + GetLastWriteTime(Folder.Startup + "libmpv-2.dll") + "\n" +
         $"ffmpeg {Player.GetPropertyString("ffmpeg-version")}\n" +
         $"MediaInfo v{FileVersionInfo.GetVersionInfo(Folder.Startup + "MediaInfo.dll").FileVersion}" +
-        $"{GetLastWriteTime(Folder.Startup + "MediaInfo.dll")}" + "\n" + "GPL v2 License";
+        $"{GetLastWriteTime(Folder.Startup + "MediaInfo.dll")}";
 
     static string GetLastWriteTime(string path) => $" ({File.GetLastWriteTime(path).ToShortDateString()})";
 
@@ -153,7 +162,7 @@ public class AppClass
 
             default:
                 if (writeError)
-                    Terminal.WriteError($"unknown MpvNet.conf property: {name}");
+                    Terminal.WriteError($"unknown FrameFlow configuration property: {name}");
 
                 return false;
         }

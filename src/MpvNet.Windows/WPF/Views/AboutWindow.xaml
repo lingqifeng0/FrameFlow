@@ -6,7 +6,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     mc:Ignorable="d"
     
-    Title="About mpv.net"
+    Title="关于 FrameFlow"
     FontSize="16"
     ShowInTaskbar="False"
     WindowStartupLocation="CenterOwner"
@@ -30,7 +30,7 @@
                 BorderThickness="0"
                 Foreground="{Binding Theme.Foreground}"
                 Background="{Binding Theme.Background}"
-                >mpv.net
+                >FrameFlow
             </TextBox>
             <TextBox
                 IsReadOnly="True"

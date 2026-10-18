@@ -8,6 +8,9 @@ namespace MpvNet.Windows.Native;
 
 public static class WinApi
 {
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, int[] value, int size);
+
     [DllImport("kernel32.dll")]
     public static extern bool AttachConsole(int dwProcessId);
 
@@ -41,6 +44,9 @@ public static class WinApi
 
     [DllImport("user32.dll")]
     public static extern bool AllowSetForegroundWindow(int dwProcessId);
+
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowEnabled(IntPtr hwnd);
 
     [DllImport("user32.dll")]
     public static extern void ReleaseCapture();
