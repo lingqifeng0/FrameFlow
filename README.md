@@ -202,7 +202,7 @@ python ./scripts/package.py
 ## 文档与验证
 
 - [详细使用说明与外部控制接口](docs/modern-player.md)
-- [V27 改名、Esc 与最大化圆角验证记录](docs/resize-audit-V27.md)
+- [V27 Esc 与最大化圆角验证记录](docs/resize-audit-V27.md)
 - [开源声明与修改记录](docs/open-source-notices.md)
 - [第三方组件、版本、哈希与许可](docs/third-party.md)
 
