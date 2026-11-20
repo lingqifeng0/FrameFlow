@@ -15,7 +15,7 @@
 
 已有用户设置的当前倍率与计算时长保留。V21 升级仍迁移原操作速度和轻点幅度，但旧版记录的迁移恢复值不再覆盖本版工厂恢复值；保存时将默认目标字段统一为 6.00×、500 毫秒。空配置从本版工厂值启动，不误判为旧版配置而迁移回 4×、30 毫秒。恢复默认时保留断点、书签和最近文件的流程继续沿用。
 
-![新默认值的实际控件预览](../previews/v25-navigation-defaults.png)
+![新默认值的实际控件预览](archive/previews/v25-navigation-defaults.png)
 
 ## 蓝色栏圆角
 
@@ -25,17 +25,17 @@ V25 在蓝色栏自己的缓冲画布上，以抗锯齿路径绘制 `#0096FF` �
 
 播放器外框的圆角及八个拉伸目标继续由原流程管理。拉伸期间仍使用完整黑色缓冲预览，蓝色栏与 GPU 宿主隐藏并冻结尺寸；松开后一次性恢复最终尺寸及栏内容。本次未改 GPU、透明窗口或视频合成方式。
 
-![蓝色栏实际预览](../previews/v25-header-after.png)
+![蓝色栏实际预览](archive/previews/v25-header-after.png)
 
 以下图片把实际四个角按左上、右上、左下、右下放大并拼放，保留原像素颜色以便检查：
 
 修改前：
 
-![原四角像素](../previews/v25-header-corners-before.png)
+![原四角像素](archive/previews/v25-header-corners-before.png)
 
 V25：
 
-![抗锯齿四角像素](../previews/v25-header-corners-after.png)
+![抗锯齿四角像素](archive/previews/v25-header-corners-after.png)
 
 175% DPI 的实际栏控件捕获，四角均存在数十个蓝黑中间色像素，原版均为零。测试同时确认新栏没有会切断抗锯齿边缘的原生裁剪区域。整个栏和放大角图均由自身 WinForms 控件渲染；基线捕获额外应用原生区域，因为 `WM_PRINT` 不总是自动应用窗口区域。
 

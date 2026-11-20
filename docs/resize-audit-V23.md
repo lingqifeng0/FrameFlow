@@ -18,9 +18,9 @@ Ctrl＋右键单击可以选择播放、静音、菜单、全屏、切换视频�
 
 预览直接由实际 WPF 设置控件渲染，完整鼠标区域与反馈区域分别渲染，未使用静态设计图替代控件。
 
-![鼠标动作设置](../previews/v23-mouse-settings.png)
+![鼠标动作设置](archive/previews/v23-mouse-settings.png)
 
-![单独的画面提示区域](../previews/v23-feedback-settings.png)
+![单独的画面提示区域](archive/previews/v23-feedback-settings.png)
 
 ## 设置与截图内存
 

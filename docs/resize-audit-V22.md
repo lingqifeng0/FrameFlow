@@ -42,7 +42,7 @@ Computer Use 使用隔离配置和实际课程视频执行右下角、底边两�
 
 验证交换两种动作、关闭拖动仍缩放、倍率步长、停用后不执行原生音量动作、普通与 Ctrl 的半刻度分别累计、自定义三个原生滚轮绑定及两个真实 WPF 下拉框保存。一次轮动只执行一次。
 
-![导航和滚轮设置页](../previews/v22-navigation-settings.png)
+![导航和滚轮设置页](archive/previews/v22-navigation-settings.png)
 
 ## 所有设置恢复默认
 

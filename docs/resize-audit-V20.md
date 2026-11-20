@@ -8,7 +8,7 @@
 
 容量测试曾用重复按钮填满槽位并显示出来，造成误解。该测试窗口已关闭，改为 16 种不同功能；正常预览与发行默认配置使用六个按钮。没有把容量测试配置写入现用播放器或发行包。
 
-![正常默认工具栏](../previews/v20-normal-toolbar.png)
+![正常默认工具栏](archive/previews/v20-normal-toolbar.png)
 
 ## 窗口缩放与启动
 
@@ -42,7 +42,7 @@
 
 输入状态使用 [mpv 官方按键绑定机制](https://mpv.io/manual/master/#command-interface) 的按下、抬起、重复和取消事件。
 
-![快捷键设置页](../previews/v20-shortcuts.png)
+![快捷键设置页](archive/previews/v20-shortcuts.png)
 
 ## 明确时间戳与目录播放列表
 
