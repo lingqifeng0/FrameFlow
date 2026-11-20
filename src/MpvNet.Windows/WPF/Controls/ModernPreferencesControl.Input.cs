@@ -15,7 +15,8 @@ public sealed partial class ModernPreferencesControl
         Section(parent,"快进倍率","NavigationSection",out var navigation);
         var result=new TextBlock {Foreground=ModernSettingsTheme.Current.Foreground2,TextWrapping=TextWrapping.Wrap};
         void UpdateResult()=>result.Text=$"轻点一次前进 / 后退 {settings.TapSeekSeconds:0.####} 秒（{settings.ArrowNavigationSpeed:0.00} × {settings.TapCalculationMilliseconds:0.##} 毫秒 ÷ 1000）。\n触发判断沿用 V21：约 180 毫秒内松开为轻点；持续按住才进入长按。计算时长不改变触发门槛。";
-        void Number(string name,string title,Func<decimal> read,Action<decimal> save,Func<decimal> reset,decimal minimum,decimal maximum,string format) {
+        void Number(string name,string title,Func<decimal> read,Action<decimal> save,Func<decimal> reset,decimal minimum,decimal maximum,string format,
+            StackPanel? section = null, string? help = null, bool wholeNumber = false) {
             var row=new Grid {Margin=new Thickness(0,0,0,12)};
             row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(1,GridUnitType.Star)});
             row.ColumnDefinitions.Add(new ColumnDefinition {Width=new GridLength(104)});
@@ -25,7 +26,8 @@ public sealed partial class ModernPreferencesControl
                 Background=ModernSettingsTheme.Current.Background,Foreground=ModernSettingsTheme.Current.Foreground,Margin=new Thickness(4,0,8,0)};
             System.Windows.Automation.AutomationProperties.SetName(box,title);
             box.TextChanged+=(_,_)=> {
-                if(decimal.TryParse(box.Text,NumberStyles.Number,CultureInfo.InvariantCulture,out var value)&&value>=minimum&&value<=maximum) {
+                if(decimal.TryParse(box.Text,NumberStyles.Number,CultureInfo.InvariantCulture,out var value)&&value>=minimum&&value<=maximum &&
+                    (!wholeNumber || value == decimal.Truncate(value))) {
                     box.BorderBrush=ModernSettingsTheme.Current.MenuHighlight; save(Math.Round(value,2)); main.SaveModernPreferences(); UpdateResult();
                 } else box.BorderBrush=Brushes.IndianRed;
             };
@@ -33,13 +35,23 @@ public sealed partial class ModernPreferencesControl
             var restore=new Button {Content="恢复默认",Height=32,Padding=new Thickness(6,0,6,0)};
             System.Windows.Automation.AutomationProperties.SetName(restore,title+"恢复默认");
             restore.Click+=(_,_)=>{save(reset());box.Text=read().ToString(format,CultureInfo.InvariantCulture);main.SaveModernPreferences();UpdateResult();};
-            Grid.SetColumn(box,1); Grid.SetColumn(restore,2); row.Children.Add(box); row.Children.Add(restore); navigation.Children.Add(row);
-            Register(name,title,"快进 快退 倍率 长按 轻点 毫秒 计算 恢复默认 独立 与播放速度分开",row);
+            Grid.SetColumn(box,1); Grid.SetColumn(restore,2); row.Children.Add(box); row.Children.Add(restore); (section ?? navigation).Children.Add(row);
+            Register(name,title,help ?? "快进 快退 倍率 长按 轻点 毫秒 计算 恢复默认 独立 与播放速度分开",row);
         }
         Number("modern.navigation-temporary","独立长按快捷键倍率（×）",()=>settings.TemporaryFastForwardSpeed,value=>settings.TemporaryFastForwardSpeed=value,()=>ModernSettings.DefaultTemporarySpeed,1,16,"0.00");
         Number("modern.navigation-arrow","方向键快进 / 快退倍率（×）",()=>settings.ArrowNavigationSpeed,value=>settings.ArrowNavigationSpeed=value,()=>ModernSettings.DefaultArrowSpeed,1,16,"0.00");
         Number("modern.navigation-tap","轻点计算时长（毫秒）",()=>settings.TapCalculationMilliseconds,value=>settings.TapCalculationMilliseconds=value,()=>ModernSettings.DefaultTapMilliseconds,1,1000,"0.##");
         navigation.Children.Add(result); UpdateResult(); Register("modern.navigation-conversion","轻点换算结果与触发门槛","轻点 毫秒 秒数 换算 180 阈值 长按 判断",result);
+        Section(parent, "逐帧操作", "FrameStepSection", out var frameStep);
+        Number("modern.frame-step-rate", "长按逐帧速度（帧/秒）", () => settings.FrameStepsPerSecond,
+            value => settings.FrameStepsPerSecond = (int)value, () => ModernSettings.DefaultFrameStepsPerSecond,
+            ModernSettings.MinimumFrameStepsPerSecond, ModernSettings.MaximumFrameStepsPerSecond, "0",
+            frameStep, "上一帧 下一帧 连续切帧 帧连播 逐帧速率 频率 每秒 恢复默认", wholeNumber: true);
+        var frameHelp = new TextBlock {
+            Text = $"范围 {ModernSettings.MinimumFrameStepsPerSecond}–{ModernSettings.MaximumFrameStepsPerSecond} 帧/秒。上一帧和下一帧共用，轻点一次移动一帧。",
+            TextWrapping = TextWrapping.Wrap, Foreground = ModernSettingsTheme.Current.Foreground2, FontSize = 12
+        };
+        frameStep.Children.Add(frameHelp); _help.Add(frameHelp);
         Section(parent,"鼠标操作","MouseSection",out var mouse);
         void Picker(StackPanel section,string name,string title,DoubleClickAction[] actions,string selected,Action<string> save,string help) {
             var row=new Grid {Margin=new Thickness(0,0,0,10)};

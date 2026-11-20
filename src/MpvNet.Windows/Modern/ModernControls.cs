@@ -63,6 +63,13 @@ public sealed class ModernButton : Button
     bool hover;
     bool pointerPressed;
     bool clickRaised;
+    bool releasingLeftButton;
+    bool suppressLeftClick;
+    internal event Action? LeftPressStarted;
+    internal event Action? LeftPressEnded;
+
+    internal void SuppressLeftClick() => suppressLeftClick = true;
+
     public ModernButton(string title, string glyph = "", int width = 40)
     {
         Text = title; Glyph = glyph; Width = width; Height = 36;
@@ -79,15 +86,17 @@ public sealed class ModernButton : Button
     {
         if (e.Button == MouseButtons.Left && Enabled && ClientRectangle.Contains(e.Location))
         {
+            suppressLeftClick = false;
             FindForm()?.Activate();
             pointerPressed = Capture;
         }
         base.OnMouseDown(e);
+        if (e.Button == MouseButtons.Left && pointerPressed) LeftPressStarted?.Invoke();
     }
     protected override void OnClick(EventArgs e)
     {
         clickRaised = true;
-        base.OnClick(e);
+        if (!releasingLeftButton || !suppressLeftClick) base.OnClick(e);
     }
     protected override void OnMouseUp(MouseEventArgs e)
     {
@@ -99,7 +108,7 @@ public sealed class ModernButton : Button
 
         // Remote tools can deliver valid client messages before desktop hit-testing
         // agrees with their window order. Keep Button validation and avoid a second click.
-        if (releasedInside && !clickRaised && !IsDisposed && Enabled)
+        if (releasedInside && !suppressLeftClick && !clickRaised && !IsDisposed && Enabled)
         {
             PerformClick();
             if (clickRaised && !IsDisposed) OnMouseClick(e);
@@ -117,7 +126,23 @@ public sealed class ModernButton : Button
     }
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == 0x001f) pointerPressed = false; // WM_CANCELMODE
+        if (m.Msg == 0x001f) { // WM_CANCELMODE
+            pointerPressed = false;
+            if (LeftPressEnded != null) {
+                SuppressLeftClick();
+                LeftPressEnded();
+            }
+        }
+        if (m.Msg == 0x0202 && LeftPressEnded != null) { // WM_LBUTTONUP
+            // Button can raise Click inside WndProc before OnMouseUp.
+            releasingLeftButton = true;
+            try {
+                LeftPressEnded();
+                base.WndProc(ref m);
+            }
+            finally { releasingLeftButton = suppressLeftClick = false; }
+            return;
+        }
         base.WndProc(ref m);
     }
     protected override void OnPaint(PaintEventArgs e)

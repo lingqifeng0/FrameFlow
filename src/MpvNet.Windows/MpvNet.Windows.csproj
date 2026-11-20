@@ -12,7 +12,7 @@
 		<UseWPF>true</UseWPF>
 		<UseWindowsForms>true</UseWindowsForms>
 		<ApplicationIcon>mpv-icon.ico</ApplicationIcon>
-		<ModernVersion>27</ModernVersion>
+		<ModernVersion>28</ModernVersion>
 		<FileVersion>7.1.2.$([MSBuild]::Add(1000, $(ModernVersion)))</FileVersion>
 		<AssemblyVersion>7.1.2.$([MSBuild]::Add(1000, $(ModernVersion)))</AssemblyVersion>
 		<InformationalVersion>FrameFlow.V$(ModernVersion)</InformationalVersion>

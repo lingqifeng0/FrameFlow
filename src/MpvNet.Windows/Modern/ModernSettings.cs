@@ -36,6 +36,10 @@ public sealed class ModernSettings
     public decimal TapDefaultMilliseconds { get; set; } = DefaultTapMilliseconds;
     [System.Text.Json.Serialization.JsonIgnore]
     public decimal TapSeekSeconds => ArrowNavigationSpeed * TapCalculationMilliseconds / 1000m;
+    public const int MinimumFrameStepsPerSecond = 1;
+    public const int MaximumFrameStepsPerSecond = 12;
+    public const int DefaultFrameStepsPerSecond = 6;
+    public int FrameStepsPerSecond { get; set; } = DefaultFrameStepsPerSecond;
     public bool ShowButtonLabels { get; set; }
     public bool AutoHideCursor { get; set; }
     public bool AutoHideFullscreenControls { get; set; } = true;
@@ -112,6 +116,7 @@ public sealed class ModernSettings
             result.ArrowDefaultSpeed = DefaultArrowSpeed;
             result.TapCalculationMilliseconds = NormalizeTapMilliseconds(result.TapCalculationMilliseconds);
             result.TapDefaultMilliseconds = DefaultTapMilliseconds;
+            result.FrameStepsPerSecond = Math.Clamp(result.FrameStepsPerSecond, MinimumFrameStepsPerSecond, MaximumFrameStepsPerSecond);
             result.SpeedStep = result.SpeedStep is 0.01m or 0.05m or 0.1m ? result.SpeedStep : 0.05m;
             result.PlaylistWidth = Math.Clamp(result.PlaylistWidth, 210, 600);
             if (result.PlaylistMode is not ("sequence" or "single-loop" or "list-loop" or "random" or "stop-current")) result.PlaylistMode = "sequence";

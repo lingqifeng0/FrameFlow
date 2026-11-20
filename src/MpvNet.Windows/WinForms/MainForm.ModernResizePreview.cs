@@ -15,6 +15,7 @@ public partial class MainForm
     void BeginModernResizePreview()
     {
         _resizeRevealTimer?.Stop();
+        CancelFrameAdvance();
         EndHeldNavigation(false);
         CancelModernScrubbing();
         Bitmap? frame = null;

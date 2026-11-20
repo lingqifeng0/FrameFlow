@@ -101,7 +101,7 @@ public partial class MainForm
         bool atFooter = inClient && _fullscreenPointer.Y >= _modernFooter.Top - edge;
         bool atHeader = inClient && _fullscreenPointer.Y < (_modernHeader.Visible ? _modernHeader.Height : edge);
         bool keepOpen = _fullscreenOpenMenus > 0 || ContextMenu.IsOpen || HasFullscreenDialog();
-        bool footerBusy = _heldDirection != 0 || HasCapturedControl(_modernFooter);
+        bool footerBusy = FrameAdvanceHeld || _heldDirection != 0 || HasCapturedControl(_modernFooter);
         bool headerBusy = HasCapturedControl(_modernHeader);
         if (atFooter || keepOpen || footerBusy) _fullscreenFooterActive = now;
         if (atHeader || headerBusy || (keepOpen && _modernHeader.Visible)) _fullscreenHeaderActive = now;

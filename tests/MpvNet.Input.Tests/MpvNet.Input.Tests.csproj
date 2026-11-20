@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../src/MpvNet.Windows/Modern/ModernControls.cs" Link="ModernControls.cs" />
+    <Compile Include="../../src/MpvNet.Windows/Modern/ModernIcons.cs" Link="ModernIcons.cs" />
     <Compile Include="../../src/MpvNet.Windows/Modern/VideoSurface.cs" Link="VideoSurface.cs" />
   </ItemGroup>
 </Project>

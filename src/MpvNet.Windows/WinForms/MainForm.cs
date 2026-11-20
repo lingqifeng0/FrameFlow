@@ -163,6 +163,12 @@ public partial class MainForm : Form
 
     void Player_ClientMessage(string[] args)
     {
+        if (args.Length >= 3 && args[0] == "key-binding" &&
+            args[1] is ShortcutCatalog.PreviousFrameBindingName or ShortcutCatalog.NextFrameBindingName) {
+            var direction = args[1] == ShortcutCatalog.PreviousFrameBindingName ? FrameStepDirection.Backward : FrameStepDirection.Forward;
+            Ui(() => HandleFrameAdvanceKey(direction, args[2], args.Length > 3 ? args[3] : ""));
+            return;
+        }
         if (args.Length >= 3 && args[0] == "key-binding" && args[1] is "modern-hold-back" or "modern-hold-forward" or "modern-hold-temporary") {
             Ui(() => HandleHeldNavigation(args[1] == "modern-hold-temporary" ? 2 : args[1] == "modern-hold-back" ? -1 : 1, args[2]));
             return;
@@ -1396,6 +1402,7 @@ public partial class MainForm : Form
 
     protected override void OnDeactivate(EventArgs e)
     {
+        EndFrameAdvanceHold();
         EndHeldNavigation(false);
         base.OnDeactivate(e);
     }

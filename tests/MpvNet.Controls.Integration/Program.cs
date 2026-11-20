@@ -21,13 +21,18 @@ internal static class Program
     [DllImport("dwmapi.dll")]
     static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
 
+    [DllImport("user32.dll")]
+    static extern IntPtr SendMessageW(IntPtr window, int message, IntPtr wParam, IntPtr lParam);
+
     [STAThread]
     static int Main()
     {
         string root = Environment.GetEnvironmentVariable("MPVNET_TEST_ROOT")!;
         string media = Environment.GetEnvironmentVariable("MPVNET_TEST_MEDIA")!;
         bool previewOnly=Environment.GetEnvironmentVariable("MPVNET_TEST_PREVIEW_ONLY")=="1";
-        string output = Path.Combine(root,previewOnly?"test-results/controls-v27/preview":"test-results/controls-v27/live");
+        string expectedVersion = "V" + System.Xml.Linq.XDocument.Load(Path.Combine(root, "src/MpvNet.Windows/MpvNet.Windows.csproj"))
+            .Descendants("ModernVersion").Single().Value;
+        string output = Path.Combine(root, $"test-results/controls-{expectedVersion.ToLowerInvariant()}", previewOnly ? "preview" : "live");
         string config = Path.Combine(output,"config-"+DateTime.UtcNow.ToString("yyyyMMdd-HHmmss-fff"));
         Directory.CreateDirectory(config);
         Environment.SetEnvironmentVariable("MPVNET_HOME",config);
@@ -143,7 +148,7 @@ internal static class Program
                     var previewDpi=System.Windows.Media.VisualTreeHelper.GetDpi(input);
                     foreach(var section in ((System.Windows.Controls.StackPanel)input.Content).Children.OfType<System.Windows.Controls.Border>())
                         RenderSection(section,previewDpi);
-                    previewWindow.Close(); Check(true,"all three real settings sections rendered independently from the scroll viewport");
+                    previewWindow.Close(); Check(true,"all input settings sections rendered independently from the scroll viewport");
                     return;
                 }
                 Check(Player.GetPropertyString("autocreate-playlist")=="no" && Player.GetPropertyInt("playlist-count")==1,
@@ -151,8 +156,8 @@ internal static class Program
                 string frontendName=Player.GetPropertyString("user-data/frontend/name");
                 if(frontendName.StartsWith('"')) frontendName=JsonSerializer.Deserialize<string>(frontendName)!;
                 Check(frontendName=="FrameFlow" &&
-                    typeof(MainForm).Assembly.GetName().Name=="FrameFlow" && ModernVersion.Label=="V27",
-                    $"the runtime frontend, WPF assembly and public version use FrameFlow V27 ({frontendName}, {typeof(MainForm).Assembly.GetName().Name}, {ModernVersion.Label})");
+                    typeof(MainForm).Assembly.GetName().Name=="FrameFlow" && ModernVersion.Label==expectedVersion,
+                    $"the runtime frontend, WPF assembly and public version use FrameFlow {expectedVersion} ({frontendName}, {typeof(MainForm).Assembly.GetName().Name}, {ModernVersion.Label})");
                 Check(File.Exists(Path.Combine(config,"frameflow.conf")) && File.Exists(Path.Combine(config,"mpvnet.conf")) &&
                     File.ReadAllText(Path.Combine(config,"frameflow.conf"))==File.ReadAllText(Path.Combine(config,"mpvnet.conf")),
                     "legacy frontend configuration migrates to frameflow.conf without deleting the original");
@@ -227,8 +232,11 @@ internal static class Program
                 var formRight=Message.Create(host.Handle,0x0100,(IntPtr)Keys.Right,IntPtr.Zero);
                 Check(!host.PreProcessMessage(ref formRight),"a direction key on the main form is not dialog navigation");
                 void VideoKey(Keys key,bool down,bool repeat=false) {
-                    uint scan=key==Keys.Right ? 0x4du : key==Keys.Left ? 0x4bu : 0x0fu;
-                    uint flags=(scan<<16)|(key==Keys.Tab ? 1u : 0x01000001u)|(down ? repeat ? 0x40000000u : 0u : 0xc0000000u);
+                    uint scan = key switch {
+                        Keys.Right => 0x4du, Keys.Left => 0x4bu, Keys.OemPeriod => 0x34u, Keys.Oemcomma => 0x33u, _ => 0x0fu
+                    };
+                    uint flags = (scan << 16) | 1u | (key is Keys.Right or Keys.Left ? 0x01000000u : 0u) |
+                        (down ? repeat ? 0x40000000u : 0u : 0xc0000000u);
                     var message=Message.Create(surface.Handle,down ? 0x0100 : 0x0101,(IntPtr)key,new IntPtr(unchecked((int)flags)));
                     if (down && surface.PreProcessMessage(ref message)) throw new Exception("WinForms consumed "+key);
                     // Invoke this process's own control's normal message handler.
@@ -346,6 +354,185 @@ internal static class Program
                 Check(true,"an actual native frame step immediately after the held release still displays its own feedback");
                 Check(Field<ModernSettings>("_modernSettings").Speed==1.25m,"temporary fast-forward speed never becomes the saved speed");
 
+                // Both frame tools use the embedded player's actual input path.
+                var frameTools = Field<List<(ToolbarItem Item, ModernButton Button)>>("_toolButtons");
+                var nextFrameButton = frameTools.Single(pair => pair.Item.Id == "frame-forward").Button;
+                var previousFrameButton = frameTools.Single(pair => pair.Item.Id == "frame-back").Button;
+                Check(nextFrameButton.Visible && previousFrameButton.Visible, "both frame buttons are visible");
+                void FrameMouse(ModernButton button, bool down) => SendMessageW(button.Handle, down ? 0x0201 : 0x0202,
+                    down ? new IntPtr(1) : IntPtr.Zero, new IntPtr(12 | 12 << 16));
+                void NextFrameMouse(bool down) => FrameMouse(nextFrameButton, down);
+                void PreviousFrameMouse(bool down) => FrameMouse(previousFrameButton, down);
+                double FramePosition() => Player.GetPropertyDouble("time-pos");
+                bool FrameSettled() => Player.Paused && !Player.GetPropertyBool("seeking") && Field<object?>("_pendingFrameStep") == null;
+                double frameInterval = 1 / Player.GetPropertyDouble("container-fps");
+                int FrameCount(double start, double end) => (int)Math.Round((end - start) / frameInterval);
+                async Task CheckStoppedAtFrame(double position, string name)
+                {
+                    await Task.Delay(360);
+                    Check(Player.Paused && Math.Abs(FramePosition() - position) < .001, name);
+                }
+                await Seek(72);
+                double startFrame = FramePosition();
+                NextFrameMouse(true); NextFrameMouse(false);
+                await Until(() => Player.Paused && FramePosition() > startFrame + .01, "single mouse frame step");
+                Check(FrameCount(startFrame, FramePosition()) == 1, "one toolbar click advances exactly one frame");
+                await CheckStoppedAtFrame(FramePosition(), "a click leaves the video paused on that frame");
+
+                async Task CheckFrameHold(string input, Action press, Action release, Action? repeat = null,
+                    bool waitsForRelease = false, int minimum = 4, int maximum = 8, int direction = 1)
+                {
+                    await Seek(75);
+                    double start = FramePosition();
+                    press();
+                    if (waitsForRelease) {
+                        await Task.Delay(90);
+                        Check(Math.Abs(FramePosition() - start) < .001, "the toolbar waits for a click release or the long-press delay");
+                    }
+                    var hold = Stopwatch.StartNew();
+                    var observedFrames = new List<double> { start };
+                    while (hold.ElapsedMilliseconds < 1000) {
+                        repeat?.Invoke();
+                        await Task.Delay(18);
+                        double position = FramePosition();
+                        if (direction * (position - observedFrames[^1]) > .001 && !Player.GetPropertyBool("seeking"))
+                            observedFrames.Add(position);
+                    }
+                    release();
+                    await Until(FrameSettled, "the last requested frame settles");
+                    double end = FramePosition();
+                    if (direction * (end - observedFrames[^1]) > .001) observedFrames.Add(end);
+                    int total = direction * FrameCount(start, end);
+                    Check(total >= minimum && total <= maximum && observedFrames.Count - 1 == total &&
+                        observedFrames.Zip(observedFrames.Skip(1)).All(p => direction * FrameCount(p.First, p.Second) == 1),
+                        $"holding {input} displays sequential frames at the configured cadence ({total} steps)");
+                    await CheckStoppedAtFrame(end, $"releasing {input} stops the repeat and issues no extra frame");
+                    await Until(() => Math.Abs(seek.Position - end) < .001 && LiveProgress(direction == 1 ? "下一帧" : "上一帧"),
+                        "the decoded frame appears in the progress bar and feedback");
+                    Check(Math.Abs(Player.GetPropertyDouble("speed") - 1.25) < .001, $"{input} uses the frame cadence at a saved playback speed of 1.25x");
+                    samples.Add(new { input, heldMilliseconds = hold.ElapsedMilliseconds, positions = observedFrames });
+                }
+                int nextFrameClicks = 0;
+                nextFrameButton.Click += (_, _) => nextFrameClicks++;
+                await CheckFrameHold("the next-frame toolbar button", () => NextFrameMouse(true), () => NextFrameMouse(false), waitsForRelease: true);
+                Check(nextFrameClicks == 0, "a toolbar hold consumes the release click");
+
+                surface.Focus();
+                await Seek(72);
+                startFrame = FramePosition();
+                VideoKey(Keys.OemPeriod, true); VideoKey(Keys.OemPeriod, false);
+                await Until(() => Player.Paused && FramePosition() > startFrame + .01, "single keyboard frame step");
+                Check(FrameCount(startFrame, FramePosition()) == 1, "a tap of the default next-frame shortcut advances exactly one frame");
+                await CheckFrameHold("the period key", () => VideoKey(Keys.OemPeriod, true),
+                    () => VideoKey(Keys.OemPeriod, false), () => VideoKey(Keys.OemPeriod, true, true));
+
+                var nextFrameShortcut = ShortcutCatalog.Find("frame-forward")!;
+                Check(Call("SetModernShortcut", nextFrameShortcut, "F6", false) == null, "next-frame can be rebound in the shortcut settings");
+                await Seek(72);
+                startFrame = FramePosition();
+                VideoKey(Keys.OemPeriod, true); VideoKey(Keys.OemPeriod, false);
+                await CheckStoppedAtFrame(startFrame, "rebinding disables the old next-frame key");
+                await CheckFrameHold("the remapped F6 key", () => Player.CommandV("keydown", "F6"), () => Player.CommandV("keyup", "F6"));
+                Check(Call("SetModernShortcut", nextFrameShortcut, "", true) == null, "restoring the original next-frame binding succeeds");
+
+                await Seek(72);
+                startFrame = FramePosition();
+                PreviousFrameMouse(true); PreviousFrameMouse(false);
+                await Until(() => FrameSettled() && FramePosition() < startFrame - .01, "single previous-frame click");
+                Check(FrameCount(startFrame, FramePosition()) == -1, "one previous-frame toolbar click goes back exactly one frame");
+                await CheckStoppedAtFrame(FramePosition(), "a previous-frame click leaves the video paused");
+                Call("ClearNavigationFeedback");
+                // Leave time-pos stationary to exercise the same path as a slow frame decode.
+                foreach (var (direction, title) in new[] { (-1, "上一帧"), (1, "下一帧") }) {
+                    Call("BeginNavigationFeedback", title, FramePosition(), direction, false);
+                    await Task.Delay(230);
+                    Call("UpdateNavigationFeedback");
+                    Check(!State("navigation").GetProperty("visible").GetBoolean(),
+                        $"a slow {title} operation never flashes a locating notice");
+                }
+                Call("BeginNavigationFeedback", "定位", FramePosition(), 0, false);
+                await Until(() => State("navigation").GetProperty("action").GetString() == "定位-pending", "slow seek notice");
+                Check(State("navigation").GetProperty("text").GetString()!.Contains("正在定位"),
+                    "an ordinary slow seek still shows the locating notice");
+                Call("ClearNavigationFeedback");
+                int previousFrameClicks = 0;
+                previousFrameButton.Click += (_, _) => previousFrameClicks++;
+                await CheckFrameHold("the previous-frame toolbar button", () => PreviousFrameMouse(true), () => PreviousFrameMouse(false),
+                    waitsForRelease: true, direction: -1);
+                Check(previousFrameClicks == 0, "a previous-frame hold consumes the release click");
+
+                await Seek(72);
+                surface.Focus();
+                startFrame = FramePosition();
+                VideoKey(Keys.Oemcomma, true); VideoKey(Keys.Oemcomma, false);
+                await Until(() => FrameSettled() && FramePosition() < startFrame - .01, "single previous-frame shortcut");
+                Check(FrameCount(startFrame, FramePosition()) == -1, "a tap of the comma shortcut goes back exactly one frame");
+                await CheckFrameHold("the comma key", () => VideoKey(Keys.Oemcomma, true), () => VideoKey(Keys.Oemcomma, false),
+                    () => VideoKey(Keys.Oemcomma, true, true), direction: -1);
+
+                var previousFrameShortcut = ShortcutCatalog.Find("frame-back")!;
+                Check(Call("SetModernShortcut", previousFrameShortcut, "F6", false) == null, "previous-frame can be rebound in the shortcut settings");
+                startFrame = FramePosition();
+                Player.CommandV("keypress", ",");
+                await CheckStoppedAtFrame(startFrame, "rebinding disables the old previous-frame key");
+                await CheckFrameHold("the remapped previous-frame shortcut", () => Player.CommandV("keydown", "F6"),
+                    () => Player.CommandV("keyup", "F6"), direction: -1);
+                Check(Call("SetModernShortcut", previousFrameShortcut, "", true) == null, "restoring the original previous-frame binding succeeds");
+
+                var frameSettings = Field<ModernSettings>("_modernSettings");
+                Check(frameSettings.FrameStepsPerSecond == 6, "an existing profile defaults to six frame steps per second");
+                frameSettings.FrameStepsPerSecond = 2;
+                await CheckFrameHold("the shortcut at two frames per second",
+                    () => Player.CommandV("keydown", "."), () => Player.CommandV("keyup", "."), minimum: 2, maximum: 3);
+                await CheckFrameHold("the previous-frame shortcut at two frames per second",
+                    () => Player.CommandV("keydown", ","), () => Player.CommandV("keyup", ","), minimum: 2, maximum: 3, direction: -1);
+                frameSettings.FrameStepsPerSecond = 10;
+                await CheckFrameHold("the toolbar at ten frames per second",
+                    () => NextFrameMouse(true), () => NextFrameMouse(false), waitsForRelease: true, minimum: 7, maximum: 10);
+                frameSettings.FrameStepsPerSecond = ModernSettings.DefaultFrameStepsPerSecond;
+
+                await Seek(frameInterval * 3);
+                await Until(() => Math.Abs(FramePosition() - frameInterval * 3) < .005, "seek to three frames after the start");
+                string framePath = Player.GetPropertyString("path");
+                Player.CommandV("keydown", ",");
+                await Until(() => FrameSettled() && FramePosition() < .001 && Field<string?>("_frameAdvanceKey") == null,
+                    "backward stepping stops when the first frame has settled");
+                await CheckStoppedAtFrame(FramePosition(), "holding previous-frame at the start keeps the first frame paused");
+                Check(Player.GetPropertyString("path") == framePath && State("navigation").GetProperty("text").GetString()!.Contains("已到开头"),
+                    "the first-frame boundary preserves the current file and shows the actual position");
+                Player.CommandV("keyup", ",");
+
+                int originalPlaylistIndex = Player.GetPropertyInt("playlist-pos");
+                int addedPlaylistIndex = Player.GetPropertyInt("playlist-count");
+                Player.CommandV("loadfile", media, "append");
+                await Until(() => Player.GetPropertyInt("playlist-count") == addedPlaylistIndex + 1, "the playlist has a following item");
+                double durationAtEnd = Player.GetPropertyDouble("duration");
+                string keepOpen = Player.GetPropertyString("keep-open");
+                await Seek(durationAtEnd - frameInterval * 4);
+                Player.CommandV("keydown", ".");
+                await Until(() => Player.GetPropertyBool("eof-reached") || Player.GetPropertyInt("playlist-pos") != originalPlaylistIndex,
+                    "held next frame reaches the end");
+                Player.CommandV("keyup", ".");
+                await Until(() => Player.Paused && Player.GetPropertyString("keep-open") == keepOpen, "playlist options restored after the last step");
+                Check(Player.GetPropertyInt("playlist-pos") == originalPlaylistIndex && FramePosition() >= durationAtEnd - .15,
+                    "long-press stepping stops at the last frame even when the playlist has a following item");
+                Player.CommandV("playlist-remove", addedPlaylistIndex.ToString());
+
+                await Seek(75);
+                startFrame = FramePosition();
+                NextFrameMouse(true);
+                await Until(() => FramePosition() > startFrame + .04 && Player.Paused, "mouse repeat before capture loss");
+                nextFrameButton.Capture = false;
+                NextFrameMouse(false);
+                await CheckStoppedAtFrame(FramePosition(), "losing mouse capture cancels repeat and any outstanding release click");
+
+                surface.Focus();
+                VideoKey(Keys.OemPeriod, true);
+                await Until(() => Player.Paused && FramePosition() > startFrame + .07, "key repeat before focus loss");
+                Call("OnDeactivate", EventArgs.Empty);
+                await CheckStoppedAtFrame(FramePosition(), "window deactivation stops repeat even before the key is released");
+                VideoKey(Keys.OemPeriod, false);
+
                 await Seek(90);
                 VideoKey(Keys.Left,true);
                 await Until(()=>Field<int>("_heldDirection")==-1 && Field<bool>("_heldStarted"),"continuous rewind begins");
@@ -416,6 +603,10 @@ internal static class Program
                 Call("OnDeactivate",EventArgs.Empty);
                 Check(Field<int>("_heldDirection")==0 && Player.GetPropertyBool("pause") && Math.Abs(Player.GetPropertyDouble("speed")-1.25)<.001,"focus loss immediately ends a held navigation and restores state");
                 Player.CommandV("keyup","Right");
+                await Until(() => {
+                    lock (keyEvents) return keyEvents.LastOrDefault() is { Length: >= 3 } latest &&
+                        latest[1] == "modern-hold-forward" && latest[2].StartsWith('u');
+                }, "the canceled input is released in mpv before the next press");
 
                 var navigationSettings=Field<ModernSettings>("_modernSettings");
                 navigationSettings.ArrowNavigationSpeed=4; navigationSettings.TapCalculationMilliseconds=100;
@@ -616,12 +807,26 @@ internal static class Program
                 }
                 System.Windows.Controls.TextBox Editor(string title) => Descendants(inputCard).OfType<System.Windows.Controls.TextBox>()
                     .Single(box=>System.Windows.Automation.AutomationProperties.GetName(box)==title);
-                var sections=Descendants(inputCard).OfType<System.Windows.Controls.Border>().Where(border=>border.Name is "NavigationSection" or "MouseSection" or "FeedbackSection").ToArray();
+                var sections=Descendants(inputCard).OfType<System.Windows.Controls.Border>()
+                    .Where(border=>border.Name is "NavigationSection" or "FrameStepSection" or "MouseSection" or "FeedbackSection").ToArray();
                 var mouseSection=sections.Single(section=>section.Name=="MouseSection");
                 var feedbackSection=sections.Single(section=>section.Name=="FeedbackSection");
-                Check(sections.Length==3 && !Descendants(mouseSection).OfType<System.Windows.Controls.CheckBox>().Any() &&
+                Check(sections.Length==4 && !Descendants(mouseSection).OfType<System.Windows.Controls.CheckBox>().Any() &&
                     Descendants(feedbackSection).OfType<System.Windows.Controls.ComboBox>().Any(),
-                    "navigation, uniform mouse-action rows and feedback form three separate settings sections");
+                    "navigation, frame stepping, mouse actions and feedback have separate settings sections");
+                const string frameRateTitle = "长按逐帧速度（帧/秒）";
+                var frameRateBox = Editor(frameRateTitle);
+                frameRateBox.Text = "9";
+                var savedFrameRate = ModernSettings.Load(Path.Combine(config,"modern-ui.json"));
+                Check(modernSettings.FrameStepsPerSecond == 9 && savedFrameRate.FrameStepsPerSecond == 9,
+                    "editing the frame cadence persists the option for the next launch");
+                frameRateBox.Text = "13";
+                Check(modernSettings.FrameStepsPerSecond == 9, "out-of-range values do not change the current frame cadence");
+                var frameRateRestore = Descendants(inputCard).OfType<System.Windows.Controls.Button>().Single(button =>
+                    System.Windows.Automation.AutomationProperties.GetName(button) == frameRateTitle + "恢复默认");
+                frameRateRestore.RaiseEvent(new System.Windows.RoutedEventArgs(System.Windows.Controls.Button.ClickEvent));
+                Check(modernSettings.FrameStepsPerSecond == 6 && frameRateBox.Text == "6",
+                    "restoring the frame cadence resets it to six");
                 var ctrlRight=Descendants(mouseSection).OfType<System.Windows.Controls.ComboBox>().Single(box=>System.Windows.Automation.AutomationProperties.GetName(box)=="Ctrl＋右键单击");
                 ctrlRight.SelectedItem=((IEnumerable<DoubleClickAction>)ctrlRight.ItemsSource).Single(action=>action.Id=="cycle mute");
                 bool beforeCtrlRight=Player.GetPropertyBool("mute"); Player.CommandV("keypress","Ctrl+MBTN_Right");
@@ -681,6 +886,7 @@ internal static class Program
                     Descendants(inputCard).OfType<System.Windows.Controls.TextBlock>().Any(block=>block.Text.Contains("3 秒（6.00 × 500 毫秒")),
                     "arrow restore sets 6x and the conversion immediately shows a three-second tap");
                 Editor("独立长按快捷键倍率（×）").Text="8.00";
+                frameRateBox.Text = "3";
                 Call("SetModernShortcut",pause,"Ctrl+F9",false);
                 modernSettings.MouseWheelVolume=false; modernSettings.VolumeBoost=true; modernSettings.ShowButtonLabels=true;
                 modernSettings.Bookmarks.Add(new VideoBookmark(media,42,"reset audit")); Call("SaveModernSettings");
@@ -699,7 +905,7 @@ internal static class Program
                     "the real restore-all button backs up the original configuration before resetting it");
                 var resetSettings=ModernSettings.Load(Path.Combine(config,"modern-ui.json"));
                 Check(resetSettings.TemporaryFastForwardSpeed==3 && resetSettings.ArrowNavigationSpeed==6 &&
-                    resetSettings.TapCalculationMilliseconds==500 && resetSettings.TapSeekSeconds==3m &&
+                    resetSettings.TapCalculationMilliseconds==500 && resetSettings.TapSeekSeconds==3m && resetSettings.FrameStepsPerSecond==6 &&
                     resetSettings.MouseWheelVolume && resetSettings.WheelAction=="volume" && resetSettings.CtrlWheelAction=="zoom" && !resetSettings.VolumeBoost && !resetSettings.ShowButtonLabels &&
                     resetSettings.ShortcutOverrides.Count==0 && resetSettings.MouseActions.Count==0 && resetSettings.Toolbar.Count==6,
                     "global defaults include all new navigation, mouse, volume and toolbar preferences");

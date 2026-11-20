@@ -19,6 +19,7 @@ public partial class MainForm
         if (state[0] == 'u') { if (_heldDirection == direction) EndHeldNavigation(!state.Contains('c')); return; }
         if (state[0] == 'p') { if (direction != 2) StepHeldNavigation(direction); return; }
         if (state[0] != 'd' || _heldDirection == direction || _currentFile.Length == 0) return;
+        CancelFrameAdvance();
         EndHeldNavigation(false);
         CancelModernScrubbing();
         FlushSliderProperties();

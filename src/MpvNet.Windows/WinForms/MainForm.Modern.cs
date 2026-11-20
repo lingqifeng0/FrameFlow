@@ -157,6 +157,7 @@ public partial class MainForm
         TrackFullscreenChromeInput(_modernFooter);
         TrackFullscreenChromeInput(_modernHeader);
         _videoSurface.MouseCaptureChanged += (_, _) => { if (!_videoSurface.Capture) CancelVideoPan(); };
+        _videoSurface.LostFocus += (_, _) => { if (_frameAdvanceKey != null) EndFrameAdvanceHold(); };
         _modernTools.Resize += (_, _) => LayoutToolbar();
         RebuildToolbar();
         _modernTimer = new System.Windows.Forms.Timer { Interval = 250 };
@@ -201,9 +202,11 @@ public partial class MainForm
         PublishModernMouseActions();
         Player.FileLoaded += () => Ui(ModernFileLoaded);
         Player.StartFile += () => Ui(() => {
+            CancelFrameAdvance();
             EndHeldNavigation(false);
             CancelModernScrubbing();
         });
+        Player.EndFile += _ => Ui(CancelFrameAdvance);
         InitializeNavigationFeedback();
         ApplyPlaylistMode(_modernSettings.PlaylistMode, false);
         Shown += (_, _) => {
@@ -222,14 +225,15 @@ public partial class MainForm
     ModernButton MakeButton(string title, string glyph, EventHandler click, int width = 40, ModernIcon icon = ModernIcon.FontGlyph)
     {
         var button = new ModernButton(title, glyph, width) { IconOnly = width <= 64, Icon = icon }; button.Click += click;
-        button.Click += (_, _) => {
-            // A toolbar click must not leave playback keys on a Button. Dialogs
-            // and popups retain their own focus and keyboard editing behavior.
-            if (!_modernClosing && button.Focused && Enabled && _fullscreenOpenMenus == 0 &&
-                !(_contextMenuIsReady && ContextMenu.IsOpen) && !HasFullscreenDialog()) _videoSurface?.Focus();
-        };
+        button.Click += (_, _) => RestorePlaybackKeyFocus(button);
         button.MouseEnter += (_, _) => ShowCursor();
         _modernTips.SetToolTip(button, title); return button;
+    }
+    void RestorePlaybackKeyFocus(ModernButton button)
+    {
+        // Dialogs and popups retain their own keyboard focus.
+        if (!_modernClosing && button.Focused && Enabled && _fullscreenOpenMenus == 0 &&
+            !(_contextMenuIsReady && ContextMenu.IsOpen) && !HasFullscreenDialog()) _videoSurface?.Focus();
     }
     void ApplyModernCursorMode()
     {
@@ -293,6 +297,7 @@ public partial class MainForm
     void ModernFileLoaded()
     {
         ApplyModernNightMode();
+        CancelFrameAdvance();
         EndHeldNavigation(false);
         CancelModernScrubbing();
         ResetNavigationFeedback();
@@ -317,6 +322,7 @@ public partial class MainForm
         var duration = Player.GetPropertyDouble("duration");
         var position = Player.GetPropertyDouble("time-pos");
         if (Player.GetPropertyString("path").Length == 0 && _currentFile.Length > 0) {
+            CancelFrameAdvance();
             CancelModernScrubbing();
             ResetNavigationFeedback();
             _currentFile = ""; _currentPosition = 0; _modernTitle.Text = ""; _emptyMessage.Visible = true;
@@ -335,7 +341,7 @@ public partial class MainForm
             UpdatePinButton();
             foreach (var pair in _toolButtons) {
                 bool active = pair.Item.Id switch {
-                    "loop-file" => Player.GetPropertyString("loop-file") == "inf",
+                    "loop-file" => (_frameStepEndOptions?.LoopFile ?? Player.GetPropertyString("loop-file")) == "inf",
                     "loop-playlist" => Player.GetPropertyString("loop-playlist") == "inf",
                     "ontop" => Player.GetPropertyBool("ontop"),
                     "fullscreen" => Player.Fullscreen,
@@ -411,6 +417,8 @@ public partial class MainForm
                 button.Margin = _moreButton.Margin;
                 button.Icon = item.Id switch { "frame-back" => ModernIcon.PreviousFrame, "frame-forward" => ModernIcon.NextFrame, _ => ModernIcon.FontGlyph };
                 button.SeparatorGroup = item.Id is "frame-back" or "frame-forward" ? "frames" : ToolbarCatalog.Find(item.Id)?.Category ?? "";
+                if (item.Id is "frame-back" or "frame-forward")
+                    EnableFrameAdvanceHold(button, item.Id == "frame-back" ? FrameStepDirection.Backward : FrameStepDirection.Forward);
                 button.Checked = item.Id == "night-mode" && _modernSettings.NightMode;
                 _toolButtons.Add((item, button)); _modernTools.Controls.Add(button);
             }
@@ -457,11 +465,12 @@ public partial class MainForm
     }
     void ExecuteTool(ToolbarItem item)
     {
+        if (item.Id is not ("frame-back" or "frame-forward")) CancelFrameAdvance();
         AllowNavigationInput();
         try {
             switch (item.Id) {
-                case "frame-back": NavigateVideo("上一帧", "frame-back-step"); break;
-                case "frame-forward": NavigateVideo("下一帧", "frame-step"); break;
+                case "frame-back": StepFrameOnce(FrameStepDirection.Backward); break;
+                case "frame-forward": StepFrameOnce(FrameStepDirection.Forward); break;
                 case "seek-back":
                 case "seek-forward":
                     foreach (var command in ToolbarCatalog.Commands(item))
@@ -534,6 +543,8 @@ public partial class MainForm
     void ShutdownModernUi()
     {
         EndModernWindowResize();
+        CancelFrameAdvance();
+        _frameAdvanceTimer?.Dispose();
         EndHeldNavigation(false);
         _heldNavigationTimer?.Dispose();
         FlushSliderProperties();

@@ -47,6 +47,7 @@ public partial class MainForm
         });
         Player.PlaybackRestart += () => Ui(() => {
             if (_navigationRequest != null) _navigationRequest.Restarted = true;
+            if (_pendingFrameStep is { } step) step.Restarted = true;
         });
         Player.ObservePropertyDouble("time-pos", position => Ui(() => ObserveNavigationPosition(position)));
         _videoSurface.Resize += (_, _) => RenderNavigationFeedback();
@@ -60,9 +61,15 @@ public partial class MainForm
 
     void NavigateVideo(string action, params string[] command)
     {
+        CancelFrameAdvance();
         EndHeldNavigation(false);
         CancelModernScrubbing();
         if (_currentFile.Length == 0) { ShowToast("请先打开视频"); return; }
+        ExecuteVideoNavigation(action, command);
+    }
+
+    void ExecuteVideoNavigation(string action, string[] command)
+    {
         AllowNavigationInput();
         if (_modernSettings.ShowNavigationFeedback)
             BeginNavigationFeedback(action, Player.GetPropertyDouble("time-pos"),
@@ -128,7 +135,9 @@ public partial class MainForm
                     action = position < pending.Source ? "上一帧" : "下一帧";
                 ShowNavigationFeedback(action, position, boundary);
             }
-            else if (age >= 150 && _navigationAction != pending.Action + "-pending")
+            // Backward frame steps may wait on an exact seek. Keep the last
+            // completed frame's timestamp visible instead of flashing a seek notice.
+            else if (pending.FrameDirection == 0 && age >= 150 && _navigationAction != pending.Action + "-pending")
                 ShowNavigationFeedback(pending.Action + "-pending", position, "", pending.Action + " · 正在定位…");
         }
         if (_navigationText.Length > 0) {
@@ -227,11 +236,13 @@ public partial class MainForm
                 // Keep the original baseline so restoration is not a new action.
                 if (property is "speed" or "pause" &&
                     (_heldDirection != 0 || value != Player.GetPropertyString(property))) return;
+                bool frameStepPause = property == "pause" && _pendingFrameStep != null;
+                if (frameStepPause && value == "no") return;
                 bool changed = initialized && previous != value;
                 initialized = true;
                 previous = value;
                 if (property is "volume" or "mute") UpdateVolumePopup();
-                if (changed && !(property == "pause" && _navigationRequest != null) && !_modernClosing && _currentFile.Length > 0 && Environment.TickCount64 >= _navigationSuppressedUntil)
+                if (changed && !frameStepPause && !(property == "pause" && _navigationRequest != null) && !_modernClosing && _currentFile.Length > 0 && Environment.TickCount64 >= _navigationSuppressedUntil)
                     ShowOperationFeedback(property, text());
             }));
         }

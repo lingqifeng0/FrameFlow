@@ -170,10 +170,12 @@ public partial class MainForm
             _playlistTitle.Text = $"播放列表 · {entries.Count}";
             _playlistEmpty.Visible = entries.Count == 0;
             _playlistRemove.Enabled = entries.Count > 0;
-            string nativeMode = Player.GetPropertyString("loop-file") is not ("no" or "0" or "") ? "single-loop" :
+            string keepOpen = _frameStepEndOptions?.KeepOpen ?? Player.GetPropertyString("keep-open");
+            string loopFile = _frameStepEndOptions?.LoopFile ?? Player.GetPropertyString("loop-file");
+            string nativeMode = loopFile is not ("no" or "0" or "") ? "single-loop" :
                 Player.GetPropertyString("loop-playlist") is not ("no" or "0" or "") ?
                     _modernSettings.PlaylistMode == "random" ? "random" : "list-loop" :
-                Player.GetPropertyString("keep-open") == "always" ? "stop-current" : "sequence";
+                keepOpen == "always" ? "stop-current" : "sequence";
             _modernSettings.PlaylistMode = nativeMode;
             _playlistModeButton.Text = PlaylistModeTitle(nativeMode) + " ▾";
             _playlistModeButton.Invalidate();
@@ -240,6 +242,7 @@ public partial class MainForm
 
     void ApplyPlaylistMode(string mode, bool notify = true)
     {
+        CancelFrameAdvance();
         if (!_playlistOptionsCaptured) {
             // Return to the configured normal behavior when leaving stop-current.
             // "always" is owned by that mode, so another mode must clear it.

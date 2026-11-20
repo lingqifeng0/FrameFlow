@@ -8,14 +8,23 @@ public sealed record ShortcutAction(string Id, string Title, string Category, st
 public static class ShortcutCatalog
 {
     static string Tool(string id) => "script-message-to mpvnet modern-tool " + id;
+    internal const string PreviousFrameBindingName = "modern-frame-back";
+    internal const string NextFrameBindingName = "modern-frame-forward";
+    internal const string PreviousFrameKeyCommand = "script-binding mpvnet/" + PreviousFrameBindingName;
+    internal const string NextFrameKeyCommand = "script-binding mpvnet/" + NextFrameBindingName;
+    internal static readonly ShortcutAction PreviousFrame =
+        new("frame-back", "上一帧", "逐帧", "frame-back-step", Tool("frame-back"), PreviousFrameKeyCommand);
+    internal static readonly ShortcutAction NextFrame =
+        new("frame-forward", "下一帧", "逐帧", "frame-step", Tool("frame-forward"), NextFrameKeyCommand);
+
     public static IReadOnlyList<ShortcutAction> All { get; } = new ShortcutAction[] {
         new("pause", "播放 / 暂停", "播放", "script-message-to mpvnet play-pause", "cycle pause"),
         new("stop", "停止播放", "播放", "stop"),
         new("hold-back", "长按连续快退", "跳转", "script-binding mpvnet/modern-hold-back"),
         new("hold-forward", "长按连续快进", "跳转", "script-binding mpvnet/modern-hold-forward"),
         new("hold-temporary", "独立长按快进（临时倍率）", "跳转", "script-binding mpvnet/modern-hold-temporary"),
-        new("frame-back", "上一帧", "逐帧", "frame-back-step", Tool("frame-back")),
-        new("frame-forward", "下一帧", "逐帧", "frame-step", Tool("frame-forward")),
+        PreviousFrame,
+        NextFrame,
         new("previous", "上一个视频", "播放列表", "playlist-prev"),
         new("next", "下一个视频", "播放列表", "playlist-next"),
         new("playlist", "显示 / 隐藏播放列表", "播放列表", Tool("playlist"), "script-binding select/select-playlist"),

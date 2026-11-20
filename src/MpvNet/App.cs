@@ -83,7 +83,7 @@ public class AppClass
         "第三方组件分别保留各自许可证，详见开源声明。\n" +
         "原作者：stax76 及 mpv.net、mpv、MPlayer 的贡献者。\n" +
         "Copyright (C) 2000-2024 mpv.net/mpv/mplayer\n" +
-        "FrameFlow 修改版：2026-10-18。此修改版并非原项目官方发行。\n" +
+          "FrameFlow 修改版：2026-11-19。此修改版并非原项目官方发行。\n" +
         "本软件按现状提供，不提供任何担保。\n\n" +
         "许可全文：License.txt；来源与组件：开源声明.md。\n" +
         $"本版前端源码：随发布提供的 FrameFlow-{AppInfo.ReleaseLabel}-source.zip。\n" +

@@ -26,6 +26,7 @@ public partial class MainForm
         _modernSeek.SeekRequested += time => {
             if (_currentFile.Length == 0) return;
             if (!_scrubbing) {
+                CancelFrameAdvance();
                 EndHeldNavigation(false);
                 _scrubbing = true;
                 _seekCommit = null;

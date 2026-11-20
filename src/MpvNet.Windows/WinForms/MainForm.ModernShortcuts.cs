@@ -30,12 +30,33 @@ public partial class MainForm
             _shortcutBase["TAB"] = command;
             Player.CommandV("keybind", "TAB", command);
         }
+        // A menu-style input.conf may omit the key supplied by mpv itself.
+        if (Player.GetPropertyBool("input-default-bindings") && Player.GetPropertyBool("input-builtin-bindings")) {
+            _shortcutBase.TryAdd(",", ShortcutCatalog.PreviousFrame.Command);
+            _shortcutBase.TryAdd(".", ShortcutCatalog.NextFrame.Command);
+        }
+        foreach (var (key, command) in _shortcutBase)
+            if (IsKeyboardBinding(key) && (ShortcutCatalog.PreviousFrame.Matches(command) || ShortcutCatalog.NextFrame.Matches(command)))
+                BindModernInput(key, command);
         ApplyModernShortcuts();
     }
 
+    static bool IsKeyboardBinding(string key) => !key.Contains("MBTN", StringComparison.OrdinalIgnoreCase) &&
+        !key.Contains("WHEEL", StringComparison.OrdinalIgnoreCase);
+
+    void BindModernInput(string key, string command)
+    {
+        // Drive both directions from key-down/up so native autorepeat cannot
+        // change the frame cadence or turn a forward step into normal playback.
+        if (IsKeyboardBinding(key)) {
+            if (ShortcutCatalog.PreviousFrame.Matches(command)) command = ShortcutCatalog.PreviousFrameKeyCommand;
+            else if (ShortcutCatalog.NextFrame.Matches(command)) command = ShortcutCatalog.NextFrameKeyCommand;
+        }
+        Player.CommandV("keybind", key, command);
+    }
+
     internal string[] ShortcutOriginalKeys(ShortcutAction action) => _shortcutBase
-        .Where(pair => !pair.Key.Contains("MBTN", StringComparison.OrdinalIgnoreCase) &&
-            !pair.Key.Contains("WHEEL", StringComparison.OrdinalIgnoreCase) && action.Matches(pair.Value))
+        .Where(pair => IsKeyboardBinding(pair.Key) && action.Matches(pair.Value))
         .Select(pair => pair.Key).ToArray();
 
     internal string ShortcutKey(ShortcutAction action) => _modernSettings.ShortcutOverrides.TryGetValue(action.Id, out var key)
@@ -73,15 +94,16 @@ public partial class MainForm
 
     void ApplyModernShortcuts()
     {
+        CancelFrameAdvance();
         EndHeldNavigation(false);
         // Restore only keys managed by this page, then apply the new overrides.
         // User input.conf and unrelated/custom script bindings remain intact.
         foreach (string key in _shortcutAppliedKeys)
-            Player.CommandV("keybind", key, _shortcutBase.GetValueOrDefault(key, "ignore"));
+            BindModernInput(key, _shortcutBase.GetValueOrDefault(key, "ignore"));
         _shortcutAppliedKeys.Clear();
         void Bind(string key, string command) {
             if (key.Length == 0) return;
-            Player.CommandV("keybind", key, command);
+            BindModernInput(key, command);
             _shortcutAppliedKeys.Add(key);
         }
         foreach (var pair in _modernSettings.ShortcutOverrides) {

@@ -36,9 +36,10 @@ with zipfile.ZipFile(source) as archive:
     assert {n.split('/')[0] for n in names}=={'FrameFlow-source'}
     required=('License.txt','src/MpvNet.Windows/Modern/WindowResizeRendering.cs',
               'src/MpvNet.Windows/FileAssociation.cs','src/MpvNet.Windows/mpv-icon.ico',
+              'src/MpvNet.Windows/WinForms/MainForm.ModernFrameAdvance.cs',
               'src/MpvNet.Windows/WinForms/MainForm.resx','scripts/build-icon.py',
               'tests/MpvNet.Resize.Integration/Program.cs','src/NGettext.Wpf/CompositionRoot.cs',
-              'docs/open-source-notices.md',f'docs/resize-audit-V{version}.md')
+              'docs/open-source-notices.md','docs/resize-audit-V27.md','README.md')
     for name in required:
         assert archive.read('FrameFlow-source/'+name)==(ROOT/name).read_bytes(),name
     assert not any('/test-results/' in n or '/.tools/' in n for n in names)

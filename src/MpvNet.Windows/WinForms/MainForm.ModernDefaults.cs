@@ -11,6 +11,7 @@ public partial class MainForm
 {
     internal string RestoreAllPlayerDefaults()
     {
+        CancelFrameAdvance();
         EndModernWindowResize(); FinishModernResizePreview(); EndHeldNavigation(false); CancelModernScrubbing();
         _sliderProperties.Clear(); _sliderTargets.Clear(); _sliderTimer?.Stop();
         _volumePopup?.Close(); _speedPopup?.Close();
